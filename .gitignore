@@ -7,6 +7,8 @@ cahier_charge/
 __pycache__
 .env
 venv/
+app.py
+
 # C extensions
 *.so
 
