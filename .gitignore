@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+cahier_charge/
+__pycache__
+.env
+venv/
 # C extensions
 *.so
 

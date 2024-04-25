@@ -22,7 +22,7 @@ def login():
                     st.session_state['user_id']= get_user_details(pseudo)    
                     st.success("You have successfully logged in!")
                     st.session_state['current_page'] = 'homePage'
-                    st.experimental_rerun()
+                    st.rerun()
                 else:
                     st.session_state['logged_in'] = False
                     st.error("Incorrect username or password")
