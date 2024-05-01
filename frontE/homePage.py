@@ -103,6 +103,13 @@ def show_search_result(user_pseudo, search_results):
             book_in_db = check_or_add_book_to_db(book)
             book_id = book_in_db.get('_id') if book_in_db else None
             
+            book_details = {
+                        'title': book.get('title'),
+                        'author': ', '.join(book.get('author_name', ['Unknown'])),
+                        'isbn': isbn,
+                        'published_year': book.get('first_publish_year'),
+                        'cover_url': book.get('cover_url', 'no cover')
+                    }
             # Check if the book is already a favorite
             is_favorite = is_book_in_favs(user_pseudo, book_id) if book_id else False
 
@@ -114,7 +121,7 @@ def show_search_result(user_pseudo, search_results):
             if fav_checked:
                 if not is_favorite:
                     # Add to favorites if not already a favorite
-                    success = add_book_to_user_favs(user_pseudo, book_id)
+                    success = add_to_favs(user_pseudo, book_details)
                     if success:
                         st.success("Book added to favorites successfully.")
                     else:

@@ -175,9 +175,9 @@ def check_or_add_book_to_db(book):
     client = get_mongo_client()
     try:
         db = client['ibooks']
-        isbn = book.get('isbn', [])
+        isbn = book.get('isbn', [])[0]
         if isbn:
-            isbn_value = isbn[0] if isinstance(isbn, list) else isbn  # Ensure ISBN is a single value
+            isbn_value = isbn if isinstance(isbn, list) else isbn  # Ensure ISBN is a single value
             book_in_db = db.books.find_one({'ISBN': isbn_value})
             if not book_in_db:
                 # Normalize book data for ISBN before insertion
@@ -251,7 +251,7 @@ def handle_add_to_favorites(user_pseudo, isbn):
 
 # This function should be in your models.py file
 def add_to_favs(user_pseudo, book_details):
-    if not book_details.get('ISBN'):
+    if not book_details.get('isbn'):
         st.error('Book must have an ISBN to be added to favorites.')
         return False
 
@@ -261,10 +261,10 @@ def add_to_favs(user_pseudo, book_details):
         books_collection = db['books']
 
         try:
-            isbn_value = book_details['ISBN'][0] if isinstance(book_details['ISBN'], list) else book_details['ISBN']
-            book_details['ISBN'] = isbn_value  # Normalize ISBN to a single value
+            isbn_value = book_details['isbn'][0] if isinstance(book_details['isbn'], list) else book_details['isbn']
+            book_details['isbn'] = isbn_value  # Normalize ISBN to a single value
 
-            book_in_db = books_collection.find_one({'ISBN': isbn_value})
+            book_in_db = books_collection.find_one({'isbn': isbn_value})
             if not book_in_db:
                 # If the book is not in the DB, insert it
                 inserted_book = books_collection.insert_one(book_details)
