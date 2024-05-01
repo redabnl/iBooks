@@ -14,14 +14,17 @@ if 'just_registered' not in st.session_state:
     st.session_state['just_registered'] = False
 if 'navigate_to_login' not in st.session_state:
     st.session_state['navigate_to_login']= False    
-
+if 'favorites' not in st.session_state:
+    st.session_state['favorites'] = {}
+if 'search_results' not in st.session_state:
+    st.session_state['search_results'] = None
 
 # Define the navigation logic
 def main():
     st.title("Welcome to the Virtual Library")
     if st.session_state['logged_in']:
         homePage.show_user_homepage(st.session_state['current_user'])
-        print('current_user')
+        print('current_user : ', st.session_state['current_user'])
     
     #redirect to login page if user have an account
     if st.session_state['navigate_to_login']:
