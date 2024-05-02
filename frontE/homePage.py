@@ -102,6 +102,7 @@ def show_search_result(user_pseudo, search_results):
             # Check if the book is in the database and add if not
             book_in_db = check_or_add_book_to_db(book)
             book_id = book_in_db.get('_id') if book_in_db else None
+            cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn else None
             
             book_details = {
                         'title': book.get('title'),
@@ -123,9 +124,14 @@ def show_search_result(user_pseudo, search_results):
                     # Add to favorites if not already a favorite
                     success = add_to_favs(user_pseudo, book_details)
                     if success:
-                        st.success("Book added to favorites successfully.")
+                        try :
+                            st.success("Book added to favorites successfully.")
+                            print(f"book added : {book_details}")
+                        except :
+                            print(f"error adding the book {NameError}")
                     else:
                         st.error("Failed to add book to favorites.")
+                        print(f"error adding the book ")
             else:
                 if is_favorite:
                     # Remove from favorites if it was a favorite
@@ -232,20 +238,30 @@ def show_library(user_pseudo):
 
         # Fetch the books' details using their ObjectIds
         fav_books = books_collection.find({'_id': {'$in': fav_books_ids}}) if fav_books_ids else []
+       
 
         for book in fav_books:
-            st.subheader(book.get('title', 'No Title'))
-            st.write('Author:', ', '.join(book.get('authors', ['Unknown'])))
-            
-            published_date = book.get('published_date')
-            if isinstance(published_date, datetime):
-                published_year = published_date.year
-            else:
-                published_year = 'Unknown'
-            # st.write('Published Year:', book.get('published_date', 'Unknown').year)
-            st.write('Published year : ', published_year)
-            st.write('Summary:', book.get('summary', 'No Summary'))
+            book_details = {
+                        'title': book.get('title'),
+                        'author': book.get('author_name'),
+                        'isbn': book.get('isbn'),
+                        'published_year': book.get('first_publish_year'),
+                        'cover_url': book.get('cover_url')
+                    }
+            display_book_details(book_details)
             st.write("-----------")
+            # st.subheader(book.get('title', 'No Title'))
+            # st.write('Author:', ', '.join(book.get('authors', ['Unknown'])))
+            
+            # published_date = book.get('published_date')
+            # if isinstance(published_date, datetime):
+            #     published_year = published_date.year
+            # else:
+            #     published_year = 'Unknown'
+            # # st.write('Published Year:', book.get('published_date', 'Unknown').year)
+            # st.write('Published year : ', published_year)
+            # st.write('Summary:', book.get('summary', 'No Summary'))
+            # st.write("-----------")
         if not fav_books:
             st.write('No favorites boooks added yet. Here is some you can like : ')
             
