@@ -1,10 +1,11 @@
-from datetime import datetime 
+from bson import ObjectId
 from config import db
 from pymongo import MongoClient, UpdateOne
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import logging
 import streamlit as st
+from datetime import datetime
 
 def get_mongo_client():
     return MongoClient(os.getenv('MONGO_DB_URI'))
@@ -37,6 +38,53 @@ def initialize_database():
     client.close()
 
 initialize_database()
+
+# review = {
+#     "user_id": ObjectId("6627fa38fd3be84e7e2df437"),  # Reference to user document
+#     "book_id": ObjectId("662aacb2d290c293abf7f519"),  # Reference to book document
+#     "rating": 5,
+#     "comment": "Great read!",
+#     "timestamp": datetime.now()
+# }
+
+# # Insert a sample review
+# db.reviews.insert_one(review)
+
+# def insert_sample_reviews():
+#     client = get_mongo_client()  
+#     db = client['ibooks']
+#     reviews_collection = db['reviews']
+
+#     sample_reviews = [
+#         {
+#             "user_id": "6627fa38fd3be84e7e2df437",
+#             "book_id": "book1",
+#             "rating": 5,
+#             "text": "Incredible read, highly recommend!",
+#             "timestamp": datetime.now()
+#         },
+#         {
+#             "user_id": "6627fa38fd3be84e7e2df437",
+#             "book_id": "6633e2b10aa0a63f0593d4ce",
+#             "rating": 4,
+#             "text": "Great book, a bit long but worth it.",
+#             "timestamp": datetime.now()
+#         },
+#         {
+#             "user_id": "user3",
+#             "book_id": "book3",
+#             "rating": 3,
+#             "text": "It was okay, not what I expected.",
+#             "timestamp": datetime.now()
+#         }
+#     ]
+
+#     # Inserting the sample reviews into the 'reviews' collection
+#     reviews_collection.insert_many(sample_reviews)
+#     print("Sample reviews inserted into MongoDB.")
+
+# # Call the function to insert reviews
+# insert_sample_reviews()
 
 # def insert_new_user(pseudo, email, password, role='user'):
 #     client = get_mongo_client()
@@ -160,6 +208,8 @@ def login_user(pseudo, pwd):
     else:
         return False
     
+
+    
 def get_user_details(pseudo):
     """
     Fetch the user details from the database based on the pseudo.
@@ -169,6 +219,24 @@ def get_user_details(pseudo):
     """
     user_doc = db.users.find_one({"pseudo": pseudo})
     return user_doc
+
+def add_review_to_book(user_pseudo, book_id, review_text, rating): ##takes user_id, book_id, text and rating as input and adds it to the databsae 
+    with get_mongo_client() as client:
+        db = client['ibooks']
+        reviews_collection = db['reviews']
+        try:
+            review = {
+                "user_id": user_pseudo,
+                "book_id": book_id,
+                "review_text": review_text,
+                "rating": rating,
+                "timestamp": datetime.datetime.now()
+            }
+            reviews_collection.insert_one(review)
+            return True
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            return False
 
 
 def check_or_add_book_to_db(book):

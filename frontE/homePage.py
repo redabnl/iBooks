@@ -3,6 +3,7 @@ import requests
 from pymongo import MongoClient
 from bson import ObjectId
 from data.models import add_to_favs, get_mongo_client, handle_book_selection,remove_for_favs, is_book_in_favs, add_book_to_user_favs, check_or_add_book_to_db
+from data.models import add_review_to_book
 from datetime import datetime
 import time
 import requests
@@ -60,7 +61,7 @@ def search_book_form():
         search_results = search_openAPI_lib(search_query, limit=3)
         if search_results:
             st.session_state['search_results'] = search_results
-            print('new books found for you : \n')
+            print(f'new books found for you : \n ')
             # show_search_result( st.session_state['current_user'],search_results)
             return search_results
         else :
@@ -76,6 +77,7 @@ def display_book_details(book):
     published_year = book.get('first_publish_year', 'Not Available')
     isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
+    
 
     with st.container():
         # Display the cover image if available
@@ -88,6 +90,21 @@ def display_book_details(book):
         st.write(f"**First Published Year:** {published_year}")
         st.write(f"**ISBN:** {isbn}")
         
+        
+def display_review_form(book_id):
+    with st.form(key=f"form_review_{book_id}"):  # Unique key for each form based on book_id
+        st.subheader("Leave a review")
+        review_text = st.text_area("Your Review", help="Write your review here.")
+        rating = st.text_input("your rating ")
+        submit_review = st.form_submit_button("Submit Review")
+
+    if submit_review :
+        add_review_to_book(st.session_state['current_user'], book_id, review_text, rating)
+        st.success("Your review has been added!")
+    else:
+            st.error("Failed to add your review.")
+        
+
         
         
  
@@ -109,13 +126,16 @@ def show_search_result(user_pseudo, search_results):
                         'author': ', '.join(book.get('author_name', ['Unknown'])),
                         'isbn': isbn,
                         'published_year': book.get('first_publish_year'),
-                        'cover_url': book.get('cover_url', 'no cover')
+                        'cover_url': cover_url
                     }
             # Check if the book is already a favorite
             is_favorite = is_book_in_favs(user_pseudo, book_id) if book_id else False
 
             # Display book details
             display_book_details(book)
+            print(f"book : {book_details}")
+            if st.button("Review this book", key=f"btn_review_{index}"):
+                display_review_form(book_id)
             
             # Checkbox to add/remove from favorites
             fav_checked = st.checkbox("❤️ Add to favorites", value=is_favorite, key=unique_key)
@@ -146,83 +166,7 @@ def show_search_result(user_pseudo, search_results):
  
  
  
- ###############################################################
- ####################################################################
-# def show_search_result(user_pseudo, search_results):
-#     # Assuming search_results contains a dictionary with 'docs' being one of the keys
-#     if search_results and 'docs' in search_results:
-#         books = search_results['docs']  # Directly accessing the list of books
-        
-#         processed_isbns = set()
-#         unique_books = []
 
-#         for book in books:
-#             if isinstance(book, dict):  # Make sure each book is a dictionary
-#                 isbn_list = book.get('isbn', [])
-#                 if isbn_list:
-#                     isbn = isbn_list[0]
-#                     if isbn not in processed_isbns:
-#                         processed_isbns.add(isbn)
-#                         unique_books.append(book)
-#                 print(f"book's isbn: {isbn}")
-                
-#                 # Only process up to three unique books
-#                 if len(unique_books) == 3:
-#                     break
-
-#         for index, book in enumerate(unique_books):
-#             isbn = book.get('isbn', [None])[0]
-#             unique_key = f"fav_{index}_{isbn}"
-#             is_favorite = is_book_in_favs(user_pseudo, isbn)
-
-#             #cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn else None
-            
-
-
-#             book_in_db = check_or_add_book_to_db(book)
-#             #is_favorite = is_book_in_favs(user_pseudo, book_in_db['_id'])
-
-#             with st.container():
-#                 fav_checked = st.checkbox("❤️ Add to favorites", value=is_favorite, key=unique_key)
-#                 if fav_checked:
-#                     if not is_favorite:
-#                         add_book_to_user_favs(user_pseudo, book_in_db['_id'])
-
-#                 display_book_details(book)  
-#             # with st.container():
-#             #     if cover_url:
-#             #         st.image(cover_url, caption=book.get('title'), width=100)
-#             #     st.write(f"Title: {book.get('title', 'No Title')}")
-#             #     st.write(f"Author: {', '.join(book.get('author_name', ['Unknown']))}")
-#             #     st.write(f"First Published Year: {book.get('first_publish_year', 'Not Available')}")
-
-#             #     fav_checked = st.checkbox("❤️ Add to favorites", value=is_favorite, key=unique_key)
-#             #     if fav_checked and not is_favorite:
-#             #         handle_book_selection(user_pseudo, search_results)
-#             #         st.rerun()
-#             #     elif not fav_checked and is_favorite:
-#             #         remove_for_favs(user_pseudo, isbn)
-#             #         st.rerun()
-#                     # #add the book to the favorites collection with book details (title, author, isbn, coverURL...)
-#                     # book_details = {
-#                     #     'title': book.get('title'),
-#                     #     'author': ', '.join(book.get('author_name', ['Unknown'])),
-#                     #     'isbn': isbn,
-#                     #     'published_year': book.get('first_publish_year'),
-#                     #     'cover_url': cover_url
-#                     # }
-#                     # # Add the book to the favorites if it's not already there
-#                     # added_successfully = add_to_favs(st.session_state['current_user'], book_details)
-#                     # if added_successfully:
-#                     #     st.success("Book added to favorites!")
-#                     # else:
-#                     #     st.error("Failed to add book to favorites.")
-                    
-                    
-#                 st.session_state['favorites'][unique_key] = fav_checked
-
-#     else:
-#         st.error("No valid search results available to display.")
 
 
 #library function where user's favbooks gonna be displayed
@@ -322,3 +266,90 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
+
+
+
+
+
+ ###############################################################
+ ####################################################################
+# def show_search_result(user_pseudo, search_results):
+#     # Assuming search_results contains a dictionary with 'docs' being one of the keys
+#     if search_results and 'docs' in search_results:
+#         books = search_results['docs']  # Directly accessing the list of books
+        
+#         processed_isbns = set()
+#         unique_books = []
+
+#         for book in books:
+#             if isinstance(book, dict):  # Make sure each book is a dictionary
+#                 isbn_list = book.get('isbn', [])
+#                 if isbn_list:
+#                     isbn = isbn_list[0]
+#                     if isbn not in processed_isbns:
+#                         processed_isbns.add(isbn)
+#                         unique_books.append(book)
+#                 print(f"book's isbn: {isbn}")
+                
+#                 # Only process up to three unique books
+#                 if len(unique_books) == 3:
+#                     break
+
+#         for index, book in enumerate(unique_books):
+#             isbn = book.get('isbn', [None])[0]
+#             unique_key = f"fav_{index}_{isbn}"
+#             is_favorite = is_book_in_favs(user_pseudo, isbn)
+
+#             #cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn else None
+            
+
+
+#             book_in_db = check_or_add_book_to_db(book)
+#             #is_favorite = is_book_in_favs(user_pseudo, book_in_db['_id'])
+
+#             with st.container():
+#                 fav_checked = st.checkbox("❤️ Add to favorites", value=is_favorite, key=unique_key)
+#                 if fav_checked:
+#                     if not is_favorite:
+#                         add_book_to_user_favs(user_pseudo, book_in_db['_id'])
+
+#                 display_book_details(book)  
+#             # with st.container():
+#             #     if cover_url:
+#             #         st.image(cover_url, caption=book.get('title'), width=100)
+#             #     st.write(f"Title: {book.get('title', 'No Title')}")
+#             #     st.write(f"Author: {', '.join(book.get('author_name', ['Unknown']))}")
+#             #     st.write(f"First Published Year: {book.get('first_publish_year', 'Not Available')}")
+
+#             #     fav_checked = st.checkbox("❤️ Add to favorites", value=is_favorite, key=unique_key)
+#             #     if fav_checked and not is_favorite:
+#             #         handle_book_selection(user_pseudo, search_results)
+#             #         st.rerun()
+#             #     elif not fav_checked and is_favorite:
+#             #         remove_for_favs(user_pseudo, isbn)
+#             #         st.rerun()
+#                     # #add the book to the favorites collection with book details (title, author, isbn, coverURL...)
+#                     # book_details = {
+#                     #     'title': book.get('title'),
+#                     #     'author': ', '.join(book.get('author_name', ['Unknown'])),
+#                     #     'isbn': isbn,
+#                     #     'published_year': book.get('first_publish_year'),
+#                     #     'cover_url': cover_url
+#                     # }
+#                     # # Add the book to the favorites if it's not already there
+#                     # added_successfully = add_to_favs(st.session_state['current_user'], book_details)
+#                     # if added_successfully:
+#                     #     st.success("Book added to favorites!")
+#                     # else:
+#                     #     st.error("Failed to add book to favorites.")
+                    
+                    
+#                 st.session_state['favorites'][unique_key] = fav_checked
+
+#     else:
+#         st.error("No valid search results available to display.")

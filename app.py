@@ -89,7 +89,7 @@ titles = df['Book-Title']
 rs = df_books[df_books['Book-Author'].isin(authors) & ~df_books['Book-Title'].isin(titles)]
 rs = rs.sample(10)
 print(rs)
-t.recommendations(rs)
+st.recommendations(rs)
 
 st.subheader('Trending among your friends')
 friends = st.session_state['Friends']
@@ -98,7 +98,7 @@ df = df.merge(df_books, on='ISBN')
 rs = df.drop_duplicates(subset=['Book-Title'])
 rs = rs.sample(10)
 print(rs)
-t.recommendations(rs)
+st.recommendations(rs)
 
 st.subheader('People with common interests read' , st.session_state['ISBN'])
 isbn = st.session_state['ISBN'] 
@@ -128,7 +128,7 @@ jaccard = jaccard.sort_values(by="Jaccard Distance", ascending=False).head(10)
 rs = df_books[df_books['ISBN'].isin(jaccard['ISBN'])]
 df = rs.head(10)
 print(df)
-t.recommendations(df)
+st.recommendations(df)
 
 st.subheader('About us')
 st.write('BookCrossing is an online platform that allows users to share and read books by connecting with other users from the platform. \
@@ -142,19 +142,19 @@ userid = st.sidebar.text_input("User-ID", placeholder="Currently logged in as us
 log_in_clicked = st.sidebar.button("Log In")
 if log_in_clicked:
   if userid.isdigit() and int(userid) in df_books_ratings['User-ID'].unique():
-    t.select_user(int(userid))
+    st.select_user(int(userid))
   elif userid.isdigit() and int(userid) in df_users['User-ID'].unique():
-    t.welcome_user()
+    st.welcome_user()
   else:
-    t.wrong_credentials()
+    st.wrong_credentials()
 
 friendid = st.sidebar.text_input("Let's find your friends!", placeholder="[277427, 278026, 277523, 276680]")
 add_clicked = st.sidebar.button("Add")
 if add_clicked:
   if friendid.isdigit() and int(friendid) in friends_list:
-    t.already_added()
+    st.already_added()
   elif friendid.isdigit() and int(friendid) in df_books_ratings['User-ID'].unique():
     friends_list.append(friendid)
-    t.add_friend(int(friends_list))
+    st.add_friend(int(friends_list))
   else:
-    t.friend_not_found()
+    st.friend_not_found()
