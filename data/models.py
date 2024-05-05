@@ -187,7 +187,7 @@ def create_user(pseudo, pwd):
     user = {
         "pseudo": pseudo,
         "pwd": hashed_pwd,
-        "email" : f'{["pseudo"]}@ibook.com',#  default mail for the user, we'll use it later 
+        "email" : f'{pseudo}@ibook.com',#  default mail for the user, we'll use it later 
         "role": 'user',  # Default role
         "isPrivate": False,  # Default privacy setting
         "account_creation_date": datetime.now(),  # Use the current time as placeholder
@@ -248,12 +248,24 @@ def check_or_add_book_to_db(book):
             isbn_value = isbn if isinstance(isbn, list) else isbn  # Ensure ISBN is a single value
             book_in_db = db.books.find_one({'ISBN': isbn_value})
             if not book_in_db:
-                # Normalize book data for ISBN before insertion
-                book['ISBN'] = isbn_value
-                book_id = db.books.insert_one(book).inserted_id
+                book_data = {
+                    'ISBN' : isbn_value, 
+                    'title' : book.get('title', ''), 
+                    'author': ','.join(book.get('author_name', [])),
+                    'published_year': book.get('first_publish_year'),
+                    'reviews': []
+                }
+                
+                book_id = db.books.insert_one(book_data).inserted_id
                 book['_id'] = book_id
-            else:
+            else :
                 book['_id'] = book_in_db['_id']
+            #     # Normalize book data for ISBN before insertion
+            #     book['ISBN'] = isbn_value
+            #     book_id = db.books.insert_one(book).inserted_id
+            #     book['_id'] = book_id
+            # else:
+            #     book['_id'] = book_in_db['_id']
         else:
             raise ValueError("Book does not have a valid ISBN")
     except Exception as e:

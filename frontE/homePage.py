@@ -2,7 +2,7 @@ import streamlit as st
 import requests
 from pymongo import MongoClient
 from bson import ObjectId
-from data.models import add_to_favs, get_mongo_client, handle_book_selection,remove_for_favs, is_book_in_favs, add_book_to_user_favs, check_or_add_book_to_db
+from data.models import add_to_favs, get_mongo_client, handle_book_selection,remove_for_favs, is_book_in_favs, add_book_to_user_favs, check_or_add_book_to_db, add_review_to_book
 from data.models import add_review_to_book
 from datetime import datetime
 import time
@@ -15,6 +15,11 @@ if 'favorites' not in st.session_state:
 
 if 'search_results' not in st.session_state:
     st.session_state['search_results'] = None
+if 'current_book' not in st.session_state:
+    st.session_state['current_book'] = None
+
+
+# Function to display the search results
 
 #function to perform a search query from the open library APi 
 def search_openAPI_lib(search, limit=3, page=1):
@@ -91,27 +96,108 @@ def display_book_details(book):
         st.write(f"**ISBN:** {isbn}")
         
         
-def display_review_form(book_id):
-    with st.form(key=f"form_review_{book_id}"):  # Unique key for each form based on book_id
-        st.subheader("Leave a review")
-        review_text = st.text_area("Your Review", help="Write your review here.")
-        rating = st.text_input("your rating ")
-        submit_review = st.form_submit_button("Submit Review")
-
-    if submit_review :
-        add_review_to_book(st.session_state['current_user'], book_id, review_text, rating)
-        st.success("Your review has been added!")
-    else:
-            st.error("Failed to add your review.")
         
 
+# def display_review_form(book_id):
+#     with st.form(key=f"form_review_{book_id}"):  # Unique key for each form based on book_id
+#         st.subheader("Leave a review")
+#         review_text = st.text_area("Your Review", help="Write your review here.")
+#         rating = st.text_input("your rating ")
+#         submit_review = st.form_submit_button("Submit Review")
+
+#     if submit_review :
+#         add_review_to_book(st.session_state['current_user'], book_id, review_text, rating)
+#         st.success("Your review has been added!")
+#     else:
+#             st.error("Failed to add your review.")
+        
+
+# def submit_review_form(user_pseudo, book_id, review_text, rating):
+#     with st.form("book_review"):
+#         review_text = st.text_area("leave a review")
+#         rating = st.text_input("your rating ")
+#         submit_review = st.form_submit_button("Submit Review")
+        
+#         if submit_review:
+#             user_pseudo = st.session_state['current_user']
+#             book_id = st.session['current_book']
+#             save_review(user_pseudo, book_id, review_text, rating)
         
         
+# def save_review(user_pseudo, book_id, review_text, rating):
+#     client = get_mongo_client()
+#     db = client['ibooks']
+    
+#     review_doc = {
+#         "user_pseudo" : user_pseudo,
+#         "book_id": book_id,
+#         "rating" : rating,  
+#         "text" :review_text,
+#         "date" : datetime.now()
+#         }
+    
+#     review_id = db.reviews.insert_one(review_doc).inserted_id
+    
+#     db.users.update_one(
+#         {"pseudo" : user_pseudo},
+#         {"$push":{"user_reviews" : review_id}}
+        
+        
+#     )
+#     st.success("review suvmitted succesfully !")
+
+
+def submit_review(user_pseudo, book_id, review_text, rating):
+    client = get_mongo_client()
+    try :
+        db = client['ibooks']
+        review_doc = {
+            "user_pseudo" : user_pseudo,
+            "book_id": book_id,
+            "rating" : rating,  
+            "text" :review_text,
+            "date" : datetime.now()
+        }
+        
+        review_id = db.reviews.insert_one(review_doc).inserted_id
+        #updating the user collection with the review left
+        db.users.update_one(
+            {"pseudo" : user_pseudo},
+            {"$push":{"user_reviews" : review_id}}
+        )
+        #updating thebooks collection with the review left
+        db.books.update_one(
+            {"_id": book_id},
+            {"$push": {"reviews": review_id}}
+        )
+        return True
+    except Exception as e:
+        print(f"mission failed vause of : \n {e}")
+        return False
+    
+        
+    
+
+def review_form(user_pseudo, book_id):
+    with st.form(key='review_form'):
+        review_text = st.text_area("Review Text", placeholder="Enter your review here...")
+        rating = st.slider("Rating", min_value=1, max_value=5, value=3)
+        submit_button = st.form_submit_button("Submit Review")
+        
+        if submit_button:
+            success = submit_review(user_pseudo, book_id, review_text, rating)
+            if success:
+                st.success("thanks for leaving a review !")
+                return user_pseudo, book_id, review_text, rating
+            else:
+                st.error("failed to add your review")
+        
+ 
  
 def show_search_result(user_pseudo, search_results):
     if search_results and 'docs' in search_results:
-        books = search_results['docs']  # Assuming this is a list of book dictionaries
-
+        books = search_results['docs']  
+        
         for index, book in enumerate(books[:3]):  # Limiting to display only the first 3 books
             isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
             unique_key = f"fav_{index}_{isbn}"
@@ -126,7 +212,8 @@ def show_search_result(user_pseudo, search_results):
                         'author': ', '.join(book.get('author_name', ['Unknown'])),
                         'isbn': isbn,
                         'published_year': book.get('first_publish_year'),
-                        'cover_url': cover_url
+                        'cover_url': cover_url,
+                        'reviews' : []
                     }
             # Check if the book is already a favorite
             is_favorite = is_book_in_favs(user_pseudo, book_id) if book_id else False
@@ -134,8 +221,7 @@ def show_search_result(user_pseudo, search_results):
             # Display book details
             display_book_details(book)
             print(f"book : {book_details}")
-            if st.button("Review this book", key=f"btn_review_{index}"):
-                display_review_form(book_id)
+            
             
             # Checkbox to add/remove from favorites
             fav_checked = st.checkbox("❤️ Add to favorites", value=is_favorite, key=unique_key)
@@ -160,6 +246,21 @@ def show_search_result(user_pseudo, search_results):
                         st.success("Book removed from favorites successfully.")
                     else:
                         st.error("Failed to remove book from favorites.")
+            if book_id:
+                with st.expander("Leave a Review"):
+                    with st.form(key=f'review_form_{index}'):
+                        review_text = st.text_area("Review Text", placeholder="Enter your review here...")
+                        rating = st.slider("Rating", min_value=1, max_value=5, value=3)
+                        submit_button = st.form_submit_button("Submit Review")
+
+                        if submit_button:
+                            add_review_to_book(user_pseudo, book_id, review_text, rating)
+                            success = submit_review(user_pseudo, book_id, review_text, rating)
+                            if success:
+                                st.success("Your review has been added!")
+                            else:
+                                st.error("Failed to add your review.")
+                
     else:
         st.error("No valid search results available to display.")
 
