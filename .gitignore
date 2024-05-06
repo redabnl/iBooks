@@ -12,7 +12,7 @@ app.py
 # C extensions
 *.so
 
-data/
+data/__pycache__
 frontE/__pycache__
 
 # Distribution / packaging
