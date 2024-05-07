@@ -1,8 +1,38 @@
 import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem.porter import PorterStemmer
 
-book_data = pd.read_csv('booksDatasetclean.csv')
+
+nltk.download('stopwords')
+
+book_data = pd.read_csv('booksDatasetClean.csv')
+
+
+
+# handling missing values
+book_data['Description'] = book_data['Description'].fillna('')
+
+# convert to lower case and remove punctuation
+book_data['Description'] = book_data['Description'].apply(lambda x: x.lower())
+book_data['Description'] = book_data['Description'].apply(lambda x: re.sub(r'[\W_]+', ' ', x))
+
+#convert text to tokens
+book_data['Description'] = book_data['Description'].apply(lambda x: x.split())
+
+#stop word removal
+stop_words = set(stopwords.words('english'))
+book_data['Description'] = book_data['Description'].apply(lambda x: [word for word in x if word not in stop_words])
+
+stemmer = PorterStemmer()
+book_data['Description'] = book_data['Description'].apply(lambda x: [stemmer.stem(word) for word in x])
+
+book_data.to_csv('dataSetCleaned.csv', index=False)
+
 print(book_data.head())
+
 
 # def load_data(source) :
 # # Load the data

@@ -47,6 +47,7 @@ mysql-client==0.0.1
 mysql-connector==2.2.9
 mysqlclient==2.2.1
 nest-asyncio==1.6.0
+nltk==3.8.1
 numpy==1.26.4
 packaging==23.2
 pandas==2.2.2
@@ -74,6 +75,7 @@ pytz==2024.1
 pywin32==306
 pyzmq==26.0.2
 referencing==0.34.0
+regex==2024.4.28
 requests==2.31.0
 rich==13.7.1
 rpds-py==0.18.0
@@ -94,6 +96,7 @@ toml==0.10.2
 tomlkit==0.12.3
 toolz==0.12.1
 tornado==6.4
+tqdm==4.66.4
 traitlets==5.14.3
 typing_extensions==4.9.0
 tzdata==2024.1
