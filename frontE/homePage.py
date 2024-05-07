@@ -13,8 +13,11 @@ import requests
 if 'favorites' not in st.session_state:
     st.session_state['favorites'] = {}
 
+
 if 'search_results' not in st.session_state:
     st.session_state['search_results'] = None
+    
+
 if 'current_book' not in st.session_state:
     st.session_state['current_book'] = None
 
@@ -50,7 +53,7 @@ def search_openAPI_lib(search, limit=3, page=1):
         st.error(f"An error occurred while fetching data: {e}")
         return None
     
-# Function to display the search result 
+
 
                 
                 
@@ -73,9 +76,9 @@ def search_book_form():
             print("cannot fetch the result : ")
         
               
-            #return search_results
             
             
+                        
 def display_book_details(book):
     title = book.get('title', 'No Title')
     authors = book.get('author_name', ['Unknown'])
@@ -271,7 +274,6 @@ def show_search_result(user_pseudo, search_results):
 
 
 #library function where user's favbooks gonna be displayed
-# This function should be in your homePage.py file
 def show_library(user_pseudo):
     with get_mongo_client() as client:
         db = client['ibooks']
@@ -295,18 +297,7 @@ def show_library(user_pseudo):
                     }
             display_book_details(book_details)
             st.write("-----------")
-            # st.subheader(book.get('title', 'No Title'))
-            # st.write('Author:', ', '.join(book.get('authors', ['Unknown'])))
             
-            # published_date = book.get('published_date')
-            # if isinstance(published_date, datetime):
-            #     published_year = published_date.year
-            # else:
-            #     published_year = 'Unknown'
-            # # st.write('Published Year:', book.get('published_date', 'Unknown').year)
-            # st.write('Published year : ', published_year)
-            # st.write('Summary:', book.get('summary', 'No Summary'))
-            # st.write("-----------")
         if not fav_books:
             st.write('No favorites boooks added yet. Here is some you can like : ')
             
@@ -319,9 +310,8 @@ def show_user_homepage(pseudo):
         
         # Header
         st.header(f"{pseudo}'s Home page")
-        # st.image('path_to_your_banner_image.jpg', use_column_width=True)  # Replace with your image path
 
-        # Navigation bar (for simplicity, these could just be buttons or links)
+        # Navigation bar 
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             if st.button('Library'):
@@ -329,8 +319,8 @@ def show_user_homepage(pseudo):
                 show_library(user_pseudo=st.session_state['current_user'])
                 pass
         with col2:
-            if st.button('Wish List'):
-                # Logic for showing the Wish List
+            if st.button('New finds'):
+                # logic for making new predictions
                 pass
         with col3:
             if st.button('Swap List'):

@@ -2,29 +2,34 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 import pandas as pd
 
-def load_data():
-    
-    dataset = pd.read_csv('data/dataSetCleaned.csv')
-    sampled_data = dataset.sample(frac=0.2)
-    
-    return sampled_data
+def load_and_prepare_data(filepath):
+    data = pd.read_csv(filepath)
+    data['Description'] = data['Description'].fillna('').astype(str).str.lower()
+    data['Description'] = data['Description'].str.replace(r'[^\w\s]', ' ')
+    tfidf_vectorizer = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = tfidf_vectorizer.fit_transform(data['Description'])
+    return data, tfidf_matrix, tfidf_vectorizer
 
-def tfidf_feature_extraction(book_data):
-    tfidf = TfidfVectorizer(stop_words='english', max_features=2000)
-    tfidf_matrix = tfidf.fit_transform(book_data['Description'])
-    return tfidf_matrix
+def recommend_books(user_description, data, tfidf_vectorizer, tfidf_matrix, top_n=5):
+    user_tfidf = tfidf_vectorizer.transform([user_description])
+    cosine_similarities = linear_kernel(user_tfidf, tfidf_matrix).flatten()
+    top_indices = cosine_similarities.argsort()[-top_n:][::-1]
+    return data.iloc[top_indices]
 
-def compute_similarity(tfidf_matrix):
-    cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
-    return cosine_sim
 
-def main():
-    book_data = load_data()
-    tfidf_matrix = tfidf_feature_extraction(book_data)
-    cosine_sim = compute_similarity(tfidf_matrix)
-    # Save or process the cosine similarity matrix as needed
-    print(cosine_sim)
+data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('dataSetCleaned.csv')
+sample_description = " action and thriller"
+recommended_books = recommend_books(sample_description, data, tfidf_vectorizer, tfidf_matrix)
+print(f"here's some books you might like : \n {recommended_books}")
 
-if __name__ == "__main__":
-    main()
+
+
+# if __name__ == "__main__":
+#     sample_description = "mystery and crime books."
+#     book_data = load_and_prepare_data()
+#     try:
+#         recommended_books = recommend_books_based_on_description(book_data, sample_description)
+#         print(recommended_books)
+#     except Exception as e:
+#         print(str(e))
 
