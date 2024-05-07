@@ -15,3 +15,17 @@ Here the user can see the books he added to his favorites collection
 ## New Predictions
 -> this is the part where we help the users find new books to read based on the description of the preferences 
 -> using the 'dataSetCleaned.csv' for now to train the model on predictions based on the book's description. 
+
+======================================================
+-1 SEARCH FEATURE USING OPEN LIBRARY SEARCH API : 
+-function to query the open API with a given search tearm with similar books too that the user may be interested in.
+-parse the response to extract the required book's informations and add a review array 
+-Display the result for the user
+
+-2 MANAGE USER FAVORITES'S BOOKS 
+-Update "user" collection model to iinclude a "favBooks"attribute that stores an array of book Objects
+-Implement functions to allow users to add or remove books from favs collection
+
+3- ENABLE USERS TO LEAVE REVIEWS ABOUT BOOKS :
+-Create a "reviews" collection where isers can store reviews for books
+-each review references the books informations and the iser who wrote the review 
