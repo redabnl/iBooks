@@ -4,6 +4,7 @@ from pymongo import MongoClient
 from bson import ObjectId
 from data.models import add_to_favs, get_mongo_client, handle_book_selection,remove_for_favs, is_book_in_favs, add_book_to_user_favs, check_or_add_book_to_db, add_review_to_book
 from data.models import add_review_to_book
+from machineL import recommend_books, recommended_books, load_and_prepare_data
 from datetime import datetime
 import time
 import requests
@@ -60,7 +61,7 @@ def search_openAPI_lib(search, limit=3, page=1):
 
             
 # Function to handle the search form 
-def search_book_form():
+def search_book_form(search_query):
     
     search_query = st.text_input("search for a new book in here !")
     submitt_search = st.button(label="search")
@@ -302,61 +303,59 @@ def show_library(user_pseudo):
             st.write('No favorites boooks added yet. Here is some you can like : ')
             
             
+            
+data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('dataSetCleaned.csv')
+
 
 # Function to display the homepage
 def show_user_homepage(pseudo):
     pseudo = st.session_state['current_user']
     if pseudo:
-        
         # Header
         st.header(f"{pseudo}'s Home page")
-
-        # Navigation bar 
-        col1, col2, col3, col4, col5 = st.columns(5)
-        with col1:
-            if st.button('Library'):
-                # Logic for showing the Library
-                show_library(user_pseudo=st.session_state['current_user'])
-                pass
-        with col2:
-            if st.button('New finds'):
-                # logic for making new predictions
-                pass
-        with col3:
-            if st.button('Swap List'):
-                # Logic for showing the Swap List
-                pass
-        with col4:
-            if st.button('Friends List'):
-                # Logic for showing the Friends List
-                pass
-        with col5:
-            if st.button('Logout'):
-                # Logic for logging out
-                pass
-
-        search_book_form()
+        st.sidebar.title('Navigation')
+        page = st.sidebar.radio("Go to : ", ['Home', 'Library', 'Explorer'])
         
-        if st.session_state['search_results']:
+        if page == 'Home':
+            st.write(f"Hi {pseudo}, welcome to your home page.")
+            search_query = st.text_input("Search for a new book here!", key='home_search')
+
+            search_book_form(search_query)  
+        elif page == 'Library': 
+            st.write("Welcome to your library.")
+            show_library(pseudo)
+        elif page == 'Explorer':  
+            st.write("Welcome to the explorer page.")
+            st.write("Welcome to the explorer page.")
+            user_description = st.text_input("Describe the book you're interested in:", key='explorer_search')
+            if st.button("Find Books", key='explorer_search_btn'):
+                recommended_books = recommend_books(user_description, data, tfidf_vectorizer, tfidf_matrix)
+                st.write("Here are some books you might like:")
+                st.write(recommended_books)
+            
+            # search_book_form() 
+        
+        
+        if st.session_state.get('search_results'):
             show_search_result(pseudo, st.session_state['search_results'])
 
-
-        # You may also add more sections to display content based on the search or user profile
+        
         st.write("Content based on user profile or search results will appear here.")
         
-    else :
+    else:
         st.error("Pseudo not found please try again")
 
-# Main function to control the page layout
+
 def main():
     # Check login state
     if st.session_state.get('logged_in', False):
         show_user_homepage(pseudo=st.session_state['current_user'])  # Show the homepage if the user is logged in
     else:
-        st.write("Please log in.")  # Or direct them to the login page
+        st.write("Please log in.")  # Or redirect them to the login page
 
 if __name__ == "__main__":
     main()
+
 
 
 

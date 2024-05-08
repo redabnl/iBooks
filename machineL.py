@@ -18,7 +18,7 @@ def recommend_books(user_description, data, tfidf_vectorizer, tfidf_matrix, top_
 
 
 data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('dataSetCleaned.csv')
-sample_description = " action and thriller"
+sample_description = " moliere and french culture"
 recommended_books = recommend_books(sample_description, data, tfidf_vectorizer, tfidf_matrix)
 print(f"here's some books you might like : \n {recommended_books}")
 
