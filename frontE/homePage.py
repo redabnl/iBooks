@@ -305,8 +305,38 @@ def show_user_homepage(user):
         else:
             st.write("No books found.")
        
+
+# <img src="{image_url}" alt="Book Cover" style="width:100%; height: 150px; border-radius: 5px;">   image_url="https://via.placeholder.com/150"
+
+# <h4>{author}</h4>       
+def generate_card(title, description, ):
+    """Generate HTML content for a single book card."""
+    card_html = f"""
+    <div style="margin: 10px; float: left; width: 300px; border: 1px solid #ccc; border-radius: 5px; padding: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
+        <h3>{title}</h3>
         
-        
+        <p>{description}</p>
+    </div>
+    """
+    return card_html
+
+def show_books_as_cards(books_df):
+    # Start of the HTML block for cards
+    st.write("<div style='display: flex; flex-wrap: wrap;'>", unsafe_allow_html=True)
+    
+    # Generate a card for each book
+    for _, row in books_df.iterrows():
+        # Assuming you have columns titled 'Title', 'Author', and 'Description' in your DataFrame
+        card_html = generate_card(
+            title=row['Title'],
+            # author=row['Author'],
+            description=row['Description'][:150] + "..."  # Limit description characters
+        )
+        st.markdown(card_html, unsafe_allow_html=True)
+    
+    # Close the HTML block
+    st.write("</div>", unsafe_allow_html=True)
+
 
 
 
@@ -323,9 +353,7 @@ def show_explorer_page():
         if recommended_books.empty:
             st.error("No books found. Please try again.")
         else:
-            # Display the books in a table format
-            st.write("Here's something you might like:")
-            st.dataframe(recommended_books)  # Displaying the DataFrame directly
+            show_books_as_cards(recommended_books)
 
 
 
