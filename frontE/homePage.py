@@ -231,6 +231,7 @@ def show_search_result(user_pseudo, search_results):
                         'cover_url': cover_url,
                         'reviews' : []
                     }
+            print(f"book found : \n {book_details}")
             # Check if the book is already a favorite
             is_favorite = is_book_in_favs(user_pseudo, book_id) if book_id else False
 
@@ -277,6 +278,8 @@ def show_search_result(user_pseudo, search_results):
                             else:
                                 st.error("Failed to add your review.")
                 
+
+        return search_results
     else:
         st.error("No valid search results available to display.")
 
@@ -301,20 +304,20 @@ def show_user_homepage(user):
         # Assume search_books returns DataFrame of books
         results = search_book_form(search_query)
         if results:
-            show_search_result(user_pseudo=st.session_state['current_user'], search_results=st.session_state['search_results'])
+            show_search_result(user_pseudo=st.session_state['current_user'], search_results=results)
         else:
             st.write("No books found.")
        
 
 # <img src="{image_url}" alt="Book Cover" style="width:100%; height: 150px; border-radius: 5px;">   image_url="https://via.placeholder.com/150"
 
-# <h4>{author}</h4>       
-def generate_card(title, description, ):
+    
+def generate_card(title,authors ,description ):
     """Generate HTML content for a single book card."""
     card_html = f"""
     <div style="margin: 10px; float: left; width: 300px; border: 1px solid #ccc; border-radius: 5px; padding: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);">
         <h3>{title}</h3>
-        
+        <h4>{authors}</h4>   
         <p>{description}</p>
     </div>
     """
@@ -329,7 +332,7 @@ def show_books_as_cards(books_df):
         # Assuming you have columns titled 'Title', 'Author', and 'Description' in your DataFrame
         card_html = generate_card(
             title=row['Title'],
-            # author=row['Author'],
+            authors=row['Authors'],
             description=row['Description'][:150] + "..."  # Limit description characters
         )
         st.markdown(card_html, unsafe_allow_html=True)
@@ -353,6 +356,7 @@ def show_explorer_page():
         if recommended_books.empty:
             st.error("No books found. Please try again.")
         else:
+            print(recommended_books.columns)
             show_books_as_cards(recommended_books)
 
 
