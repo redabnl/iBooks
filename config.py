@@ -11,6 +11,7 @@ logging.basicConfig(level=logging.INFO)
 
 client = MongoClient(MONGO_URI)
 
-db = client['ibooks'] #ibook database in MongoDb 
+
+db = client['ibooks'] 
 
 users_collection = db['users']

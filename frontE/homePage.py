@@ -4,7 +4,7 @@ from pymongo import MongoClient
 from bson import ObjectId
 from data.models import add_to_favs, get_mongo_client, handle_book_selection,remove_for_favs, is_book_in_favs, add_book_to_user_favs, check_or_add_book_to_db, add_review_to_book
 from data.models import add_review_to_book
-from machineL import recommend_books, recommended_books, load_and_prepare_data
+from machineL import recommend_books, load_and_prepare_data
 from datetime import datetime
 import time
 import requests
@@ -26,7 +26,7 @@ if 'current_book' not in st.session_state:
 # Function to display the search results
 
 #function to perform a search query from the open library APi 
-def search_openAPI_lib(search, limit=3, page=1):
+def search_openAPI_lib(search, limit=9, page=1):
     search_url = f"https://openlibrary.org/search.json?q={search}&limit={limit}&page={page}"
     try:
         response = requests.get(search_url)
@@ -67,11 +67,11 @@ def search_book_form(search_query):
     submitt_search = st.button(label="search")
     
     if submitt_search and search_query : 
-        search_results = search_openAPI_lib(search_query, limit=3)
+        search_results = search_openAPI_lib(search_query, limit=9)
         if search_results:
             st.session_state['search_results'] = search_results
             print(f'new books found for you : \n ')
-            # show_search_result( st.session_state['current_user'],search_results)
+            show_search_result( st.session_state['current_user'],search_results)
             return search_results
         else :
             print("cannot fetch the result : ")
@@ -81,26 +81,38 @@ def search_book_form(search_query):
             
                         
 def display_book_details(book):
-    title = book.get('title', 'No Title')
-    authors = book.get('author_name', ['Unknown'])
-    published_year = book.get('first_publish_year', 'Not Available')
-    isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
-    cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-    
-
     with st.container():
-        # Display the cover image if available
+        # display_book_cards(book)
+        
+        title = book.get('title', 'No Title')
+        authors = book.get('author_name', ['Unknown'])
+        published_year = book.get('first_publish_year', 'Not Available')
+        isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
+        cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
+        
+
+            # Display the cover image if available
         if cover_url:
             st.image(cover_url, caption=title, width=100)
+            
+            # Display book details
+            st.write(f"**Title:** {title}")
+            st.write(f"**Author:** {', '.join(authors)}")
+            st.write(f"**First Published Year:** {published_year}")
+            st.write(f"**ISBN:** {isbn}")
         
-        # Display book details
-        st.write(f"**Title:** {title}")
-        st.write(f"**Author:** {', '.join(authors)}")
-        st.write(f"**First Published Year:** {published_year}")
-        st.write(f"**ISBN:** {isbn}")
         
         
         
+        
+        
+# def display_book_cards(books):
+#     cols = st.columns(3)
+#     for index, book in enumerate(books.itertuples(), start=1):
+#         with cols[(index-1) % 3]:
+#             # st.image(book.cover_url, width=100)
+#             st.write(book.title)
+#             st.write(f"By {book.author}")
 
 # def display_review_form(book_id):
 #     with st.form(key=f"form_review_{book_id}"):  # Unique key for each form based on book_id
@@ -213,7 +225,7 @@ def show_search_result(user_pseudo, search_results):
             
             book_details = {
                         'title': book.get('title'),
-                        'author': ', '.join(book.get('author_name', ['Unknown'])),
+                        'author': ', '.join(book.get('author_name')),
                         'isbn': isbn,
                         'published_year': book.get('first_publish_year'),
                         'cover_url': cover_url,
@@ -274,76 +286,47 @@ def show_search_result(user_pseudo, search_results):
 
 
 
-#library function where user's favbooks gonna be displayed
-def show_library(user_pseudo):
-    with get_mongo_client() as client:
-        db = client['ibooks']
-        users_collection = db['users']
-        books_collection = db['books']
 
-        user_doc = users_collection.find_one({'pseudo': user_pseudo})
-        fav_books_ids = user_doc.get('favBooks', [])
-
-        # Fetch the books' details using their ObjectIds
-        fav_books = books_collection.find({'_id': {'$in': fav_books_ids}}) if fav_books_ids else []
-       
-
-        for book in fav_books:
-            book_details = {
-                        'title': book.get('title'),
-                        'author': book.get('author_name'),
-                        'isbn': book.get('isbn'),
-                        'published_year': book.get('first_publish_year'),
-                        'cover_url': book.get('cover_url')
-                    }
-            display_book_details(book_details)
-            st.write("-----------")
-            
-        if not fav_books:
-            st.write('No favorites boooks added yet. Here is some you can like : ')
             
             
             
-data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('dataSetCleaned.csv')
 
 
 # Function to display the homepage
-def show_user_homepage(pseudo):
-    pseudo = st.session_state['current_user']
-    if pseudo:
-        # Header
-        st.header(f"{pseudo}'s Home page")
-        st.sidebar.title('Navigation')
-        page = st.sidebar.radio("Go to : ", ['Home', 'Library', 'Explorer'])
+def show_user_homepage(user):
+    st.header(f"{user}'s Home Page")
+    st.write(f"Hi {user}, welcome to your home page.")
+    search_query = st.text_input("Search for a new book here!")
+    if st.button('Search'):
+        # Assume search_books returns DataFrame of books
+        results = search_book_form(search_query)
+        if results:
+            show_search_result(user_pseudo=st.session_state['current_user'], search_results=st.session_state['search_results'])
+        else:
+            st.write("No books found.")
+       
         
-        if page == 'Home':
-            st.write(f"Hi {pseudo}, welcome to your home page.")
-            search_query = st.text_input("Search for a new book here!", key='home_search')
+        
 
-            search_book_form(search_query)  
-        elif page == 'Library': 
-            st.write("Welcome to your library.")
-            show_library(pseudo)
-        elif page == 'Explorer':  
-            st.write("Welcome to the explorer page.")
-            st.write("Welcome to the explorer page.")
-            user_description = st.text_input("Describe the book you're interested in:", key='explorer_search')
-            if st.button("Find Books", key='explorer_search_btn'):
-                recommended_books = recommend_books(user_description, data, tfidf_vectorizer, tfidf_matrix)
-                st.write("Here are some books you might like:")
-                st.write(recommended_books)
-            
-            # search_book_form() 
-        
-        
-        if st.session_state.get('search_results'):
-            show_search_result(pseudo, st.session_state['search_results'])
 
-        
-        st.write("Content based on user profile or search results will appear here.")
-        
-    else:
-        st.error("Pseudo not found please try again")
+
+
+def show_explorer_page():
+    
+    data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('data/dataSetCleaned.csv')
+
+    st.write("Welcome to the explorer page.")
+    user_description = st.text_input("Describe the book you're interested in:", '')
+
+    if st.button("Find Books", key='explorer_search_btn'):
+        recommended_books = recommend_books(user_description, data, tfidf_vectorizer, tfidf_matrix)
+        if recommended_books.empty:
+            st.error("No books found. Please try again.")
+        else:
+            # Display the books in a table format
+            st.write("Here's something you might like:")
+            st.dataframe(recommended_books)  # Displaying the DataFrame directly
+
 
 
 def main():

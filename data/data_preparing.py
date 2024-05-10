@@ -4,33 +4,40 @@ from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
 
 # Load data
-data = pd.read_csv('dataSetCleaned.csv')
+book_data = pd.read_csv('BooksDatasetClean.csv')
 
-# Sampling data for cpu and memory reasons
-book_data = data.sample(frac=0.3) if len(data) > 1000 else data
+# Sampling data for CPU and memory reasons
+#book_data = book_data.sample(frac=0.3) if len(book_data) > 1000 else book_data
 
-# Handling missing values
-book_data['Description'] = book_data['Description'].fillna('')
+# Handling missing values for both description and category
+book_data['Description'] = book_data['Description'].fillna('').astype(str)
+book_data['Category'] = book_data['Category'].fillna('').astype(str)
 
-#convert to lower 
+# Convert to lower case and remove non-alphanumeric characters for both fields
 book_data['Description'] = book_data['Description'].str.lower().str.replace(r'[\W_]+', ' ', regex=True)
+book_data['Category'] = book_data['Category'].str.lower().str.replace(r'[\W_]+', ' ', regex=True)
+
+# Combine description and category into a single string
+book_data['Combined_Text'] = book_data['Description'] + ' ' + book_data['Category']
 
 # Tokenization
-book_data['Description'] = book_data['Description'].str.split()
+book_data['Combined_Text'] = book_data['Combined_Text'].str.split()
 
 # Stop word removal
 stop_words = set(stopwords.words('english'))
-book_data['Description'] = book_data['Description'].apply(lambda x: [word for word in x if word not in stop_words])
+book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: [word for word in x if word not in stop_words])
 
 # Stemming
 stemmer = PorterStemmer()
-book_data['Description'] = book_data['Description'].apply(lambda x: [stemmer.stem(word) for word in x])
+book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: [stemmer.stem(word) for word in x])
 
-# Combinong tokens back to a single string
-book_data['Description'] = book_data['Description'].apply(lambda x: ' '.join(x))
+# Combining tokens back to a single string
+book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: ' '.join(x))
 
-# save the processed data into a clean csv dfile 
+# Save the processed data into a clean csv file
 book_data.to_csv('dataSetCleaned.csv', index=False)
 
-#test function
-print(book_data.head())
+print(f"data prepared for you \n {book_data['Combined_Text']}")
+
+# Test function
+# print(book_data.head())
