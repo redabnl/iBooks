@@ -1,9 +1,10 @@
+from flask import app, redirect
 import streamlit as st
 import requests
 from pymongo import MongoClient
 from bson import ObjectId
 from data.models import add_to_favs, get_mongo_client, handle_book_selection,remove_for_favs, is_book_in_favs, add_book_to_user_favs, check_or_add_book_to_db, add_review_to_book
-from data.models import add_review_to_book
+from data.models import add_review_to_book, submit_review
 from machineL import recommend_books, load_and_prepare_data
 from datetime import datetime
 import time
@@ -23,7 +24,6 @@ if 'current_book' not in st.session_state:
     st.session_state['current_book'] = None
 
 
-# Function to display the search results
 
 #function to perform a search query from the open library APi 
 def search_openAPI_lib(search, limit=9, page=1):
@@ -55,6 +55,9 @@ def search_openAPI_lib(search, limit=9, page=1):
         return None
     
 
+def redirect_to_cheaper99(isbn):
+    return redirect(f"https://cheaper99.com/{isbn}")
+
 
                 
                 
@@ -63,11 +66,11 @@ def search_openAPI_lib(search, limit=9, page=1):
 # Function to handle the search form 
 def search_book_form(search_query):
     
-    search_query = st.text_input("search for a new book in here !")
+    search_query = st.text_input("what book we reading today !")
     submitt_search = st.button(label="search")
     
     if submitt_search and search_query : 
-        search_results = search_openAPI_lib(search_query, limit=9)
+        search_results = search_openAPI_lib(search_query, limit=9, page=1)
         if search_results:
             st.session_state['search_results'] = search_results
             print(f'new books found for you : \n ')
@@ -80,26 +83,32 @@ def search_book_form(search_query):
             
             
                         
-def display_book_details(book):
-    with st.container():
-        # display_book_cards(book)
-        
-        title = book.get('title', 'No Title')
-        authors = book.get('author_name', ['Unknown'])
-        published_year = book.get('first_publish_year', 'Not Available')
-        isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
+def display_book_details(books):
+    if isinstance(books, dict):
+        # Assuming 'books' is a dictionary containing book details
+        title = books.get('title', 'No Title')
+        authors = books.get('author_name', ['Unknown'])
+        published_year = books.get('first_publish_year', 'Not Available')
+        isbn = books.get('isbn', [''])[0] if books.get('isbn', []) else 'N/A'
         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-        
 
-            # Display the cover image if available
+        # Display details
         if cover_url:
             st.image(cover_url, caption=title, width=100)
-            
-            # Display book details
-            st.write(f"**Title:** {title}")
-            st.write(f"**Author:** {', '.join(authors)}")
-            st.write(f"**First Published Year:** {published_year}")
-            st.write(f"**ISBN:** {isbn}")
+        if isbn != 'N/A':
+            url = f"https://cheaper99.com/{isbn}"
+            title_link = f"<a href='{url}' target='_blank'>{title}</a>"
+            st.markdown(title_link, unsafe_allow_html=True)
+        else:
+            st.write(f"**Title:** {title} ")
+        st.write(f"**Author:** {', '.join(authors)}")
+        st.write(f"**First Published Year:** {published_year}")
+        st.write(f"**ISBN:** {isbn}")
+        
+        if st.button("shop") :
+            redirect_to_cheaper99(isbn)
+    else:
+        st.error("Data format not recognized, expected a dictionary.")
         
         
         
@@ -163,33 +172,7 @@ def display_book_details(book):
 #     st.success("review suvmitted succesfully !")
 
 
-def submit_review(user_pseudo, book_id, review_text, rating):
-    client = get_mongo_client()
-    try :
-        db = client['ibooks']
-        review_doc = {
-            "user_pseudo" : user_pseudo,
-            "book_id": book_id,
-            "rating" : rating,  
-            "text" :review_text,
-            "date" : datetime.now()
-        }
-        
-        review_id = db.reviews.insert_one(review_doc).inserted_id
-        #updating the user collection with the review left
-        db.users.update_one(
-            {"pseudo" : user_pseudo},
-            {"$push":{"user_reviews" : review_id}}
-        )
-        #updating thebooks collection with the review left
-        db.books.update_one(
-            {"_id": book_id},
-            {"$push": {"reviews": review_id}}
-        )
-        return True
-    except Exception as e:
-        print(f"mission failed vause of : \n {e}")
-        return False
+
     
         
     
@@ -214,7 +197,7 @@ def show_search_result(user_pseudo, search_results):
     if search_results and 'docs' in search_results:
         books = search_results['docs']  
         
-        for index, book in enumerate(books[:3]):  # Limiting to display only the first 3 books
+        for index, book in enumerate(books[:9]):  # Limiting to display only the first 9 books
             isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
             unique_key = f"fav_{index}_{isbn}"
             
@@ -231,10 +214,13 @@ def show_search_result(user_pseudo, search_results):
                         'cover_url': cover_url,
                         'reviews' : []
                     }
-            print(f"book found : \n {book_details}")
+            print(f"book found : \n {book_details} \n ")
             # Check if the book is already a favorite
             is_favorite = is_book_in_favs(user_pseudo, book_id) if book_id else False
 
+
+            print(f"book type : \n {type(book)} \n ")
+            # print(f"book from open Lib : \n {book}")
             # Display book details
             display_book_details(book)
             print(f"book : {book_details}")
@@ -291,6 +277,14 @@ def show_search_result(user_pseudo, search_results):
 
 
             
+        # if st.button('Search'):
+            
+        #     # Assume search_books returns DataFrame of books
+        #     results = search_openAPI_lib(search_query)
+        #     if results:
+        #         show_search_result(user_pseudo=st.session_state['current_user'], search_results=results)
+        #     else:
+        #         st.write("No books found.")
             
             
 
@@ -299,14 +293,9 @@ def show_search_result(user_pseudo, search_results):
 def show_user_homepage(user):
     st.header(f"{user}'s Home Page")
     st.write(f"Hi {user}, welcome to your home page.")
-    search_query = st.text_input("Search for a new book here!")
-    if st.button('Search'):
-        # Assume search_books returns DataFrame of books
-        results = search_book_form(search_query)
-        if results:
-            show_search_result(user_pseudo=st.session_state['current_user'], search_results=results)
-        else:
-            st.write("No books found.")
+    
+    
+    search_book_form(search_query = st.text_input("Search for a new book here!"))
        
 
 # <img src="{image_url}" alt="Book Cover" style="width:100%; height: 150px; border-radius: 5px;">   image_url="https://via.placeholder.com/150"

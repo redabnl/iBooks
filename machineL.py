@@ -11,14 +11,14 @@ def load_and_prepare_data(csv_file):
     data['Description'] = data['Description'].fillna('').astype(str).str.lower()
     data['Category'] = data['Category'].fillna('').astype(str).str.lower()
 
-    # Combine description and category into a single text column
+    # combining boook's description and category for more ctx
     data['Combined_Text'] = data['Description'] + ' ' + data['Category']
 
-    # Optional: further text processing (e.g., stemming, lemmatization)
+    # text processing
     stop_words = set(stopwords.words('english'))
     data['Combined_Text'] = data['Combined_Text'].apply(lambda x: ' '.join(word for word in x.split() if word not in stop_words))
 
-    # Proceed with TF-IDF vectorization
+    # TF-IDF vectorization
     tfidf_vectorizer = TfidfVectorizer()
     tfidf_matrix = tfidf_vectorizer.fit_transform(data['Combined_Text'])
     return data, tfidf_matrix, tfidf_vectorizer

@@ -3,11 +3,9 @@ import streamlit as st
 from data.models import create_user
 from streamlit import session_state
 
-# Temporary placeholder for the create_user function
-# Replace it with the actual function from your models.py
+
 # def create_user(username, password):
-#     # Here you would insert the new user into your database.
-#     # For demonstration purposes, let's say registration is always successful.
+#     
 #     return True
 
 

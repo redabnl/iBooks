@@ -13,18 +13,15 @@ def get_mongo_client():
 def initialize_database():
     client = get_mongo_client()
     
-    # This will create a new database called 'ibooks' if it doesn't already exist.
+    
     db = client['ibooks']
     
-    # This will create new collections 'users', 'books', and 'reviews' if they don't already exist.
-    # Collections are created automatically upon insertion of the first document, but you can also create indexes here.
     
-    # For example, let's create the 'users' collection with a unique index on the 'pseudo' field.
     if 'users' not in db.list_collection_names():
         db.create_collection('users')
         db['users'].create_index([('pseudo', 1)], unique=True)
     
-    # Now for the 'books' collection with a unique index on the 'ISBN' field.
+    # book collection with unique index 'ISBN'
     if 'books' not in db.list_collection_names():
         db.create_collection('books')
         db['books'].create_index([('ISBN', 1)], unique=True)
@@ -107,8 +104,7 @@ initialize_database()
 #     result = users_collection.insert_one(user_document)
 #     print(f"New user {pseudo} created with ID: {result.inserted_id}")
 
-# # Example usage:
-# insert_new_user('newUser', 'newUser@ibooks.com', 'password123')
+
 
 
 # def insert_new_book(title, authors, ISBN, published_date, summary):
@@ -187,11 +183,11 @@ def create_user(pseudo, pwd):
     user = {
         "pseudo": pseudo,
         "pwd": hashed_pwd,
-        "email" : f'{pseudo}@ibook.com',#  default mail for the user, we'll use it later 
+        "email" : f'{pseudo}@ibook.com',
         "role": 'user',  # Default role
-        "isPrivate": False,  # Default privacy setting
-        "account_creation_date": datetime.now(),  # Use the current time as placeholder
-        "favBooks": [],  # Empty array as placeholder
+        "isPrivate": False,  
+        "account_creation_date": datetime.now(), 
+        "favBooks": [],  
         "borrowedBooks": []  # Empty array as placeholder
     }
     #insert the new user into the users collection
@@ -329,7 +325,7 @@ def handle_add_to_favorites(user_pseudo, isbn):
 
 
 
-# This function should be in your models.py file
+
 def add_to_favs(user_pseudo, book_details):
     if not book_details.get('isbn'):
         st.error('Book must have an ISBN to be added to favorites.')
@@ -437,3 +433,30 @@ def remove_for_favs(user_pseudo, isbn):
 
 
     
+def submit_review(user_pseudo, book_id, review_text, rating):
+    client = get_mongo_client()
+    try :
+        db = client['ibooks']
+        review_doc = {
+            "user_pseudo" : user_pseudo,
+            "book_id": book_id,
+            "rating" : rating,  
+            "text" :review_text,
+            "date" : datetime.now()
+        }
+        
+        review_id = db.reviews.insert_one(review_doc).inserted_id
+        #updating the user collection with the review left
+        db.users.update_one(
+            {"pseudo" : user_pseudo},
+            {"$push":{"user_reviews" : review_id}}
+        )
+        #updating thebooks collection with the review left
+        db.books.update_one(
+            {"_id": book_id},
+            {"$push": {"reviews": review_id}}
+        )
+        return True
+    except Exception as e:
+        print(f"mission failed vause of : \n {e}")
+        return False

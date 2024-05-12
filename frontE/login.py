@@ -4,16 +4,16 @@ from data.models import login_user, get_user_details
 def login():
     with st.container():
         st.write("Please login ")
-        # Create the login form
+        # login for 
         with st.form(key='login_form'):
             pseudo = st.text_input("Pseudo")
             pwd = st.text_input("PWD", type="password")
             submit_button = st.form_submit_button(label='Login')
 
-            # When the user hits the submit button
+            # submitt btn function
             if submit_button:
                 if login_user(pseudo,pwd):
-                    # Set the session state to indicate that the user is logged in
+                    # set the session state for the user logged in 
                     st.session_state['logged_in'] = True
                     st.session_state['current_user'] = pseudo
                     print("Logged in:", st.session_state['logged_in'])
