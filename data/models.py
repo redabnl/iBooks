@@ -26,7 +26,7 @@ def initialize_database():
         db.create_collection('books')
         db['books'].create_index([('ISBN', 1)], unique=True)
     
-    # And the 'reviews' collection doesn't need a unique index as reviews can have duplicate fields.
+    # And the 'reviews' collection doesn't need a unique index since it can have dupllicated fields
     if 'reviews' not in db.list_collection_names():
         db.create_collection('reviews')
 
@@ -36,139 +36,7 @@ def initialize_database():
 
 initialize_database()
 
-# review = {
-#     "user_id": ObjectId("6627fa38fd3be84e7e2df437"),  # Reference to user document
-#     "book_id": ObjectId("662aacb2d290c293abf7f519"),  # Reference to book document
-#     "rating": 5,
-#     "comment": "Great read!",
-#     "timestamp": datetime.now()
-# }
 
-# # Insert a sample review
-# db.reviews.insert_one(review)
-
-# def insert_sample_reviews():
-#     client = get_mongo_client()  
-#     db = client['ibooks']
-#     reviews_collection = db['reviews']
-
-#     sample_reviews = [
-#         {
-#             "user_id": "6627fa38fd3be84e7e2df437",
-#             "book_id": "book1",
-#             "rating": 5,
-#             "text": "Incredible read, highly recommend!",
-#             "timestamp": datetime.now()
-#         },
-#         {
-#             "user_id": "6627fa38fd3be84e7e2df437",
-#             "book_id": "6633e2b10aa0a63f0593d4ce",
-#             "rating": 4,
-#             "text": "Great book, a bit long but worth it.",
-#             "timestamp": datetime.now()
-#         },
-#         {
-#             "user_id": "user3",
-#             "book_id": "book3",
-#             "rating": 3,
-#             "text": "It was okay, not what I expected.",
-#             "timestamp": datetime.now()
-#         }
-#     ]
-
-#     # Inserting the sample reviews into the 'reviews' collection
-#     reviews_collection.insert_many(sample_reviews)
-#     print("Sample reviews inserted into MongoDB.")
-
-# # Call the function to insert reviews
-# insert_sample_reviews()
-
-# def insert_new_user(pseudo, email, password, role='user'):
-#     client = get_mongo_client()
-#     db = client['ibooks']
-#     users_collection = db['users']
-
-#     # Create the user document
-#     user_document = {
-#         'pseudo': pseudo,
-#         'email': email,
-#         'pwd': generate_password_hash(password),  # Hash the password before storing it
-#         'role': role,
-#         'isPrivate': False,
-#         'account_creation_date': datetime.now(),
-#         'favBooks': [],
-#         'borrowedBooks': []
-#     }
-
-#     # Insert the new user document into the users collection
-#     result = users_collection.insert_one(user_document)
-#     print(f"New user {pseudo} created with ID: {result.inserted_id}")
-
-
-
-
-# def insert_new_book(title, authors, ISBN, published_date, summary):
-#     client = get_mongo_client()
-#     db = client['ibooks']
-#     books_collection = db['books']
-
-#     # Create the book document
-#     book_document = {
-#         'title': title,
-#         'authors': authors,  # This should be a list of author names
-#         'ISBN': ISBN,
-#         'published_date': published_date,
-#         'summary': summary
-#     }
-
-#     # Insert the new book document into the books collection
-#     result = books_collection.insert_one(book_document)
-#     print(f"New book {title} created with ID: {result.inserted_id}")
-
-# # Example usage:
-# insert_new_book(
-#     'The Adventures of Sherlock Holmes',
-#     ['Arthur Conan Doyle'],
-#     '9783161484100',
-#     datetime(1892, 10, 14),  # Use the correct published date
-#     'A collection of twelve short stories featuring Conan Doyle’s legendary detective'
-# )
-
-
-# def add_new_user_fields():
-#     client = get_mongo_client()
-#     db = client['ibooks'] 
-#     users_collection = db['users']
-
-#     # Here you should define how you'll obtain or generate the new fields for existing users.
-#     # For example, 'email' can be user input, 'role' could be assigned as 'user' by default, etc.
-
-#     # You can iterate over your users and create a bulk operation for efficiency.
-#     # This example will just add placeholders for new fields.
-#     updates = []
-#     for user in users_collection.find():
-#         updates.append(UpdateOne(
-#             {'_id': user['_id']},
-#             {
-#                 '$set': {
-#                     'email': f'{user["pseudo"]}@ibooks.com',  
-#                     'role': 'user',  # Default role
-#                     'isPrivate': False,  # Default privacy setting
-#                     'account_creation_date': datetime.now(),  # Use the current time as placeholder
-#                     'favBooks': [],  # Empty array as placeholder
-#                     'borrowedBooks': []  # Empty array as placeholder
-#                 }
-#             }
-#         ))
-
-#     if updates:
-#         result = users_collection.bulk_write(updates)
-#         print(f"{result.modified_count} documents updated.")
-#     else:
-#         print("No updates to perform.")
-
-# # Call the function to perform the update
-# add_new_user_fields()
 
 
 #############################################################
@@ -184,7 +52,7 @@ def create_user(pseudo, pwd):
         "pseudo": pseudo,
         "pwd": hashed_pwd,
         "email" : f'{pseudo}@ibook.com',
-        "role": 'user',  # Default role
+        "role": 'user',  # Default role fro now, maybe we can add some administrator
         "isPrivate": False,  
         "account_creation_date": datetime.now(), 
         "favBooks": [],  
@@ -241,7 +109,7 @@ def check_or_add_book_to_db(book):
         db = client['ibooks']
         isbn = book.get('isbn', [])[0]
         if isbn:
-            isbn_value = isbn if isinstance(isbn, list) else isbn  # Ensure ISBN is a single value
+            isbn_value = isbn if isinstance(isbn, list) else isbn  # makin sure the ISBN single value
             book_in_db = db.books.find_one({'ISBN': isbn_value})
             if not book_in_db:
                 book_data = {
@@ -256,19 +124,14 @@ def check_or_add_book_to_db(book):
                 book['_id'] = book_id
             else :
                 book['_id'] = book_in_db['_id']
-            #     # Normalize book data for ISBN before insertion
-            #     book['ISBN'] = isbn_value
-            #     book_id = db.books.insert_one(book).inserted_id
-            #     book['_id'] = book_id
-            # else:
-            #     book['_id'] = book_in_db['_id']
+            
         else:
             raise ValueError("Book does not have a valid ISBN")
     except Exception as e:
         print(f"An error occurred: {e}")
         return None  # Return None if there's an error
     finally:
-        client.close()  # Ensure the client is closed properly
+        client.close()  # closin the client
     return book
 
 
@@ -284,10 +147,6 @@ def handle_add_to_favorites(user_pseudo, isbn):
         users_collection = db['users']
         books_collection = db['books']
         
-        # if not book_details:
-        #     print(f"No book details provided for ISBN : {isbn}")
-        #     return False
-        
         
         # Check if the book is already in the collection by ISBN
         book_in_db = books_collection.find_one({'ISBN': isbn})
@@ -300,9 +159,6 @@ def handle_add_to_favorites(user_pseudo, isbn):
             print(f"No book details for ISBN : {isbn}")
             return False
             
-            # if book_details is not None:
-            #     book_id = books_collection.insert_one(book_details).inserted_id
-            # else:
         
         print(f"Book id to add in favorittes : {book_id}") 
         if book_id:
@@ -338,11 +194,11 @@ def add_to_favs(user_pseudo, book_details):
 
         try:
             isbn_value = book_details['isbn'][0] if isinstance(book_details['isbn'], list) else book_details['isbn']
-            book_details['isbn'] = isbn_value  # Normalize ISBN to a single value
+            book_details['isbn'] = isbn_value  
 
             book_in_db = books_collection.find_one({'isbn': isbn_value})
             if not book_in_db:
-                # If the book is not in the DB, insert it
+                # If the book is not in the DB, we insert it for data we'll need later
                 inserted_book = books_collection.insert_one(book_details)
                 book_id = inserted_book.inserted_id
             else:
@@ -357,6 +213,17 @@ def add_to_favs(user_pseudo, book_details):
         except Exception as e:
             st.error(f"Failed to add book to favorites due to: {str(e)}")
             return False
+
+
+def toggle_favorite(isbn, add=True):
+    favorites = st.session_state.get('favorites', [])
+    if add:
+        if isbn not in favorites:
+            favorites.append(isbn)
+    else:
+        if isbn in favorites:
+            favorites.remove(isbn)
+    st.session_state['favorites'] = favorites
 
 
 

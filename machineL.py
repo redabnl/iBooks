@@ -6,6 +6,8 @@ from nltk.corpus import stopwords
 nltk.download('stopwords')
 
 
+
+# load data from the csv file and train it for recommandations based on book's genre and it's description
 def load_and_prepare_data(csv_file):
     data = pd.read_csv(csv_file)
     data['Description'] = data['Description'].fillna('').astype(str).str.lower()
@@ -31,6 +33,8 @@ def recommend_books(user_description, data, tfidf_vectorizer, tfidf_matrix, top_
 
 
 data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('data/dataSetCleaned.csv')
+
+
 # sample_description = "algorihtmes "
 # recommended_books = recommend_books(sample_description, data, tfidf_vectorizer, tfidf_matrix)
 # print(f"here's some books you might like : \n {recommended_books}")
@@ -38,7 +42,7 @@ data, tfidf_matrix, tfidf_vectorizer = load_and_prepare_data('data/dataSetCleane
 
 
 if __name__ == "__main__":
-    sample_description = "books to read to kids about superheroes and villans"
+    sample_description = "books about mathematics"
     book_data = load_and_prepare_data('data/dataSetCleaned.csv')
     try:
         recommended_books = recommend_books(sample_description, data, tfidf_vectorizer, tfidf_matrix)

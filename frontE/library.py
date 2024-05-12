@@ -1,5 +1,6 @@
 from data.models import get_mongo_client
 from frontE.homePage import display_book_details
+from frontE.homePage import show_books_as_cards
 import streamlit as st
 
 
@@ -29,6 +30,7 @@ def show_library(user_pseudo = st.session_state['current_user']):
                         'cover_url': book.get('cover_url'),
                         'reviews' : []
                     }
+            show_books_as_cards(book_details)
             
             # display_book_details(book)
             print(book_details)
@@ -36,3 +38,15 @@ def show_library(user_pseudo = st.session_state['current_user']):
             
         if not fav_books:
             st.write('No favorites boooks added yet. Here is some you can like : ')
+            
+            
+            
+# def main():
+#     # Check login state
+#     if st.session_state.get('logged_in', False):
+#         show_library(pseudo=st.session_state['current_user'])  # Show the homepage if the user is logged in
+#     else:
+#         st.write("Please log in.")  # Or redirect them to the login page
+
+# if __name__ == "__main__":
+#     main()

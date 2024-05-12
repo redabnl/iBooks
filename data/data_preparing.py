@@ -13,7 +13,7 @@ book_data = pd.read_csv('BooksDatasetClean.csv')
 book_data['Description'] = book_data['Description'].fillna('').astype(str)
 book_data['Category'] = book_data['Category'].fillna('').astype(str)
 
-# Convert to lower case and remove non-alphanumeric characters for both fields
+# Convert to lower case and remove non-alphanumeric characters for bot fieds
 book_data['Description'] = book_data['Description'].str.lower().str.replace(r'[\W_]+', ' ', regex=True)
 book_data['Category'] = book_data['Category'].str.lower().str.replace(r'[\W_]+', ' ', regex=True)
 
@@ -27,7 +27,7 @@ book_data['Combined_Text'] = book_data['Combined_Text'].str.split()
 stop_words = set(stopwords.words('english'))
 book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: [word for word in x if word not in stop_words])
 
-# Stemming
+# Stemming (said it was optional but why not )
 stemmer = PorterStemmer()
 book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: [stemmer.stem(word) for word in x])
 

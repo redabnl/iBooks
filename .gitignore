@@ -12,8 +12,12 @@ app.py
 # C extensions
 *.so
 
+
 data/__pycache__
 frontE/__pycache__
+/trashcode.py
+/tests.py
+
 
 # Distribution / packaging
 .Python
