@@ -1,6 +1,6 @@
 import streamlit as st 
 from machineL import load_and_prepare_data, recommend_books
-from homePage import show_books_as_cards
+from frontE.homePage import show_books_as_cards
 
 
 

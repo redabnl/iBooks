@@ -1,17 +1,14 @@
 from flask import app, redirect
 import streamlit as st
 import requests
-from data.models import  get_mongo_client, is_book_in_favs, check_or_add_book_to_db
-from data.models import add_review_to_book, submit_review, toggle_favorite
-from machineL import recommend_books, load_and_prepare_data
-from datetime import datetime
-import time
+from data.models import  get_mongo_client, is_book_in_favs, check_or_add_book_to_db, add_to_favs
+from data.models import add_review_to_book, submit_review, remove_for_favs
 import requests
 
 
 # Initialize session state for favorites and search results
 if 'favorites' not in st.session_state:
-    st.session_state['favorites'] = {}
+    st.session_state['favorites'] = []
 
 
 if 'search_results' not in st.session_state:
@@ -111,25 +108,26 @@ def show_books_as_cards(books_df):
             
             
                         
-def display_book_details(books):
-    if isinstance(books, dict):
+def display_book_details(book):
+    if isinstance(book, dict):
         # Assuming 'books' is a dictionary containing book details
-        title = books.get('title', 'No Title')
-        authors = books.get('author_name', ['Unknown'])
-        published_year = books.get('first_publish_year', 'Not Available')
-        isbn = books.get('isbn', [''])[0] if books.get('isbn', []) else 'N/A'
+        title = book.get('title', 'No Title')
+        author = book.get('author', ['Unknown'])
+        published_year = book.get('published_year', 'Not Available')
+        isbn_list = book.get('isbn', [])
+        if isbn_list:
+                isbn = isbn_list[0] 
         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
 
         # Display details
         if cover_url:
             st.image(cover_url, caption=title, width=100)
-        if isbn != 'N/A':
-            url = f"https://cheaper99.com/{isbn}"
-            title_link = f"<a href='{url}' target='_blank'>{title}</a>"
-            st.markdown(title_link, unsafe_allow_html=True)
-        else:
-            st.write(f"**Title:** {title} ")
-        st.write(f"**Author:** {', '.join(authors)}")
+        url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
+        title_link = f"<a href='{url}' target='_blank'>{title}</a>"
+        st.markdown(title_link, unsafe_allow_html=True)
+        
+        st.write(f"**Title:** {title}")
+        st.write(f"**Author:** {author}")
         st.write(f"**First Published Year:** {published_year}")
         st.write(f"**ISBN:** {isbn}")
         
@@ -161,56 +159,92 @@ def show_search_result(user_pseudo, search_results):
         books = search_results['docs']  
         
         for index, book in enumerate(books[:9]):  # Limiting to display only the first 9 books
-            isbn = book.get('isbn', [])[0] if book.get('isbn', []) else 'N/A'
+            isbn = book.get('isbn') 
             unique_key = f"fav_{index}_{isbn}"
             
             # Check if the book is in the database and add if not
             book_in_db = check_or_add_book_to_db(book)
             book_id = book_in_db.get('_id') if book_in_db else None
-            cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn else None
             
-            book_details = {
-                        'title': book.get('title'),
-                        'author': ', '.join(book.get('author_name')),
-                        'isbn': isbn,
-                        'published_year': book.get('first_publish_year'),
-                        'cover_url': cover_url,
-                        'reviews' : []
-                    }
-            print(f"book found : \n {book_details} \n ")
+            if isinstance(book, dict):
+                title = book.get('title')
+                author = book.get('author_name')
+                published_year = book.get('first_publish_year'),
+                isbn_list = book.get('isbn', [])
+                if isbn_list:
+                        isbn = isbn_list[0] 
+                cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
+
+                # Display details
+                if cover_url:
+                    st.image(cover_url, caption=title, width=100)
+                url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
+                title_link = f"<a href='{url}' target='_blank'>{title}</a>"
+                st.markdown(title_link, unsafe_allow_html=True)
+                
+                st.write(f"**Title:** {title}")
+                st.write(f"**Author:** {author}")
+                st.write(f"**First Published Year:** {published_year}")
+                st.write(f"**ISBN:** {isbn}")
+                
+                # is_favorite = is_book_in_favs(user_pseudo, isbn) if isbn else False
+
+        
+     
+                fav_checked = st.checkbox("Add to favorites", value=book_id in st.session_state['favorites'], key=unique_key)
+                # fav_checked = st.checkbox("Add to favorites", value=is_favorite , key=unique_key)
+                if fav_checked and is_book_in_favs == True:
+                    print(f"book {book_id} added ")
+                    success = add_to_favs(user_pseudo, book_id)  # Your function to add to DB
+                    if success:
+                          # Update session state
+                        st.session_state['favorites'].append(book_id)
+                        st.success("Book added to favorites successfully.")
+                    else:
+                        st.error("Failed to add book to favorites.")
+                elif fav_checked and is_book_in_favs == False:
+                    success = remove_for_favs(user_pseudo, book_id)  # Your function to remove from DB
+                    if success:
+                          # Update session state
+                        st.session_state['favorites'].remove(book_id)
+                        st.success("Book removed from favorites successfully.")
+            # cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn else None
+            
+            # book_details = {
+            #             'title': book.get('title'),
+            #             'author': book.get('author_name'),
+            #             'isbn': isbn,
+            #             'published_year': book.get('first_publish_year'),
+            #             'cover_url': cover_url,
+            #             'reviews' : []
+            #         }
+            # print(f"book found : \n {book_details} \n ")
+            
+            
             # Check if the book is already a favorite
-            is_favorite = is_book_in_favs(user_pseudo, book_id) if book_id else False
 
 
-            print(f"book type : \n {type(book)} \n ")
-            # print(f"book from open Lib : \n {book}")
+            # print(f"book type : \n {type(book)} \n ")
             # Display book details
-            display_book_details(book)
-            # print(f"book : {book_details}")
-            
-            if 'favorites' not in st.session_state:
-                st.session_state['favorites'] = []
 
-            fav_checked = st.checkbox("❤️ Add to favorites", value=isbn in st.session_state['favorites'], key=unique_key)
-            if fav_checked:
-                toggle_favorite(isbn, add=True)
-            else:
-                toggle_favorite(isbn, add=False)
+                # else:
+                #     handle_book_selection(user_pseudo=st.session_state['current_user'], search_results=st.session_state['search_results'])
+                    
 
-            if book_id:
-                with st.expander("Leave a Review"):
-                    with st.form(key=f'review_form_{index}'):
-                        review_text = st.text_area("Review Text", placeholder="Enter your review here...")
-                        rating = st.slider("Rating", min_value=1, max_value=5, value=3)
-                        submit_button = st.form_submit_button("Submit Review")
+                if book_id:
+                    with st.expander("Leave a Review"):
+                        with st.form(key=f'review_form_{index}'):
+                            review_text = st.text_area("Review Text", placeholder="Enter your review here...")
+                            rating = st.slider("Rating", min_value=1, max_value=5, value=3)
+                            submit_button = st.form_submit_button("Submit Review")
 
-                        if submit_button:
-                            add_review_to_book(user_pseudo, book_id, review_text, rating)
-                            success = submit_review(user_pseudo, book_id, review_text, rating)
-                            if success:
-                                st.success("Your review has been added!")
-                            else:
-                                st.error("Failed to add your review.")
+                            if submit_button:
+                                add_review_to_book(user_pseudo, book_id, review_text, rating)
+                                success = submit_review(user_pseudo, book_id, review_text, rating)
+                                if success:
+                                    st.success("Your review has been added!")
+                                else:
+                                    st.error("Failed to add your review.")
                 
 
         return search_results

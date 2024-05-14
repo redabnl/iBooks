@@ -18,22 +18,31 @@ def show_library(user_pseudo = st.session_state['current_user']):
         fav_books_ids = user_doc.get('favBooks', [])
 
         # Fetch the books' details using their ObjectIds
-        fav_books = books_collection.find({'_id': {'$in': fav_books_ids}}) if fav_books_ids else []
+        # fav_books = books_collection.find({'_id': {'$in': fav_books_ids}}) if fav_books_ids else []
         
 
+        
+        fav_books = books_collection.find({'_id': {'$in': fav_books_ids}})
+        # print(list(fav_books)) 
         for book in fav_books:
-            book_details = {
-                        'title': book.get('title'),
-                        'author': book.get('author'),
-                        'isbn': book.get('ISBN'),
-                        'published_year': book.get('first_publish_year'),
-                        'cover_url': book.get('cover_url'),
-                        'reviews' : []
-                    }
-            show_books_as_cards(book_details)
+            title = book.get('title'),
+            author = book.get('author'),
+            isbn = book.get('isbn'),
+            published_year = book.get('published_year'),
+            cover_url = book.get('cover_url')
+            
+            
+            st.write(f"**Book ID:** {book.get('_id')}")
+                    
+            st.write(f"**Title:** {title}")
+            st.write(f"**Author:** {author}")
+            st.write(f"**First Published Year:** {published_year}")
+            st.write(f"**ISBN:** {isbn}")
+            if cover_url:
+                st.image(cover_url, caption=title, width=100)
             
             # display_book_details(book)
-            print(book_details)
+            # print(book_details)
             st.write("-----------")
             
         if not fav_books:

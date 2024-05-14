@@ -182,10 +182,10 @@ def handle_add_to_favorites(user_pseudo, isbn):
 
 
 
-def add_to_favs(user_pseudo, book_details):
-    if not book_details.get('isbn'):
-        st.error('Book must have an ISBN to be added to favorites.')
-        return False
+def add_to_favs(user_pseudo, book_id):
+    # if not book_details.get('isbn'):
+    #     st.error('Book must have an ISBN to be added to favorites.')
+    #     return False
 
     with get_mongo_client() as client:
         db = client['ibooks']
@@ -193,13 +193,13 @@ def add_to_favs(user_pseudo, book_details):
         books_collection = db['books']
 
         try:
-            isbn_value = book_details['isbn'][0] if isinstance(book_details['isbn'], list) else book_details['isbn']
-            book_details['isbn'] = isbn_value  
+            # isbn_value = book_details['isbn'][0] if isinstance(book_details['isbn'], list) else book_details['isbn']
+            # book_details['isbn'] = isbn_value  
 
-            book_in_db = books_collection.find_one({'isbn': isbn_value})
+            book_in_db = books_collection.find_one({'_id': book_id})
             if not book_in_db:
                 # If the book is not in the DB, we insert it for data we'll need later
-                inserted_book = books_collection.insert_one(book_details)
+                inserted_book = books_collection.insert_one(book_id)
                 book_id = inserted_book.inserted_id
             else:
                 book_id = book_in_db['_id']
@@ -248,7 +248,8 @@ def is_book_in_favs(user_pseudo, isbn):
                     if isbn in book_isbn:
                         return True
                 elif book_isbn == isbn:
-                    return True
+                    st.write("removed from favs")
+                    return False
         return False
 
             
@@ -279,14 +280,14 @@ def handle_book_selection(user_pseudo, search_results):
 
 
 
-def remove_for_favs(user_pseudo, isbn):
+def remove_for_favs(user_pseudo, book_id):
     with get_mongo_client() as client:
         db = client['ibooks']
         users_collection = db['users']
         books_collection = db['books']
 
         # Get the ObjectId of the book to be removed
-        book_to_remove = books_collection.find_one({'ISBN': isbn})
+        book_to_remove = books_collection.find_one({'_id': book_id})
         if not book_to_remove:
             return False
 
