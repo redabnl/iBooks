@@ -1,43 +1,78 @@
 import pandas as pd
-import re
-from nltk.corpus import stopwords
-from nltk.stem.porter import PorterStemmer
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
+from transformers import BertTokenizer, BertModel
+import torch
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from tqdm import tqdm
 
-# Load data
-book_data = pd.read_csv('BooksDatasetClean.csv')
 
-# Sampling data for CPU and memory reasons
-#book_data = book_data.sample(frac=0.3) if len(book_data) > 1000 else book_data
 
-# Handling missing values for both description and category
-book_data['Description'] = book_data['Description'].fillna('').astype(str)
-book_data['Category'] = book_data['Category'].fillna('').astype(str)
 
-# Convert to lower case and remove non-alphanumeric characters for bot fieds
-book_data['Description'] = book_data['Description'].str.lower().str.replace(r'[\W_]+', ' ', regex=True)
-book_data['Category'] = book_data['Category'].str.lower().str.replace(r'[\W_]+', ' ', regex=True)
+# Load the prepared dataset with a specified encoding and error handling
+df = pd.read_csv('BooksDatasetClean.csv', encoding='latin1', on_bad_lines='skip')
 
-# Combine description and category into a single string
-book_data['Combined_Text'] = book_data['Description'] + ' ' + book_data['Category']
+# Ensure column names are stripped of any leading/trailing whitespace
+df.columns = df.columns.str.strip()
 
-# Tokenization
-book_data['Combined_Text'] = book_data['Combined_Text'].str.split()
+print("dataset's columns : \n")
+print(df.columns)
 
-# Stop word removal
-stop_words = set(stopwords.words('english'))
-book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: [word for word in x if word not in stop_words])
+print("dataset's head : \n", df.head())
 
-# Stemming (said it was optional but why not )
-stemmer = PorterStemmer()
-book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: [stemmer.stem(word) for word in x])
+# Initialize sentiment analyzer
+sia = SentimentIntensityAnalyzer()
 
-# Combining tokens back to a single string
-book_data['Combined_Text'] = book_data['Combined_Text'].apply(lambda x: ' '.join(x))
+# Calculate sentiment scores for descriptions
+df['sentiment'] = df['Description'].apply(lambda x: sia.polarity_scores(str(x))['compound'])
 
-# Save the processed data into a clean csv file
-book_data.to_csv('dataSetCleaned.csv', index=False)
+# Initialize BERT tokenizer and model
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+model = BertModel.from_pretrained('bert-base-uncased')
 
-print(f"data prepared for you \n {book_data['Combined_Text']}")
+print("tokenizer and BERT initialized...")
+print("gpu or cpu ?")
+# Move model to GPU if available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+print("using : ", device)
 
-# Test function
-# print(book_data.head())
+def get_bert_embeddings(text):
+    inputs = tokenizer(text, return_tensors='pt', truncation=True, padding=True, max_length=512)
+    inputs = {k: v.to(device) for k, v in inputs.items()}
+    outputs = model(**inputs)
+    return outputs.last_hidden_state.mean(dim=1).detach().cpu().numpy()
+
+batch_size = 16
+embeddings = []
+for i in tqdm(range(0, len(df), batch_size)):
+    batch_texts = df['Description'][i:i + batch_size].fillna('').tolist()
+    batch_embeddings = get_bert_embeddings(batch_texts)
+    embeddings.append(batch_embeddings)
+
+# Calculate BERT embeddings for descriptions
+df['bert_embeddings'] = df['Description'].apply(lambda x: get_bert_embeddings(str(x)))
+print("BERT embeddings calculated")
+
+# Combine TF-IDF and sentiment features
+tfidf = TfidfVectorizer(stop_words='english', max_features=5000, ngram_range=(1, 2))
+tfidf_matrix = tfidf.fit_transform(df['Description'].fillna(''))
+print("TF-IDF calculated")
+
+# Reduce dimensions of TF-IDF features
+svd = TruncatedSVD(n_components=100)
+tfidf_matrix_reduced = svd.fit_transform(tfidf_matrix)
+print("TF-IDF dimensions reduced")
+
+# Stack TF-IDF features with sentiment scores and BERT embeddings
+bert_embeddings = np.vstack(df['bert_embeddings'])
+X = np.hstack((tfidf_matrix_reduced, df[['sentiment']].values, bert_embeddings))
+y = df['Category']  # Assuming 'Category' is the target column
+
+# Save processed data
+np.savez_compressed('processed_data.npz', X=X, y=y)
+print("Data preprocessing completed and saved.")
+
+df.to_csv('datasets/cleaned_books_desc_sentiments.csv', index=False)
+print("Data preprocessing completed and saved to 'datasets/cleaned_books_desc_sentiments.csv'")

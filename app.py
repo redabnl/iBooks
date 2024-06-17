@@ -89,7 +89,7 @@ titles = df['Book-Title']
 rs = df_books[df_books['Book-Author'].isin(authors) & ~df_books['Book-Title'].isin(titles)]
 rs = rs.sample(10)
 print(rs)
-st.recommendations(rs)
+# st.recommendations(rs)
 
 st.subheader('Trending among your friends')
 friends = st.session_state['Friends']
@@ -98,7 +98,7 @@ df = df.merge(df_books, on='ISBN')
 rs = df.drop_duplicates(subset=['Book-Title'])
 rs = rs.sample(10)
 print(rs)
-st.recommendations(rs)
+# st.recommendations(rs)
 
 st.subheader('People with common interests read' , st.session_state['ISBN'])
 isbn = st.session_state['ISBN'] 
@@ -128,7 +128,7 @@ jaccard = jaccard.sort_values(by="Jaccard Distance", ascending=False).head(10)
 rs = df_books[df_books['ISBN'].isin(jaccard['ISBN'])]
 df = rs.head(10)
 print(df)
-st.recommendations(df)
+# st.recommendations(df)
 
 st.subheader('About us')
 st.write('BookCrossing is an online platform that allows users to share and read books by connecting with other users from the platform. \

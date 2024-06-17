@@ -13,11 +13,12 @@ app.py
 *.so
 
 
-data/__pycache__
+
+data/
 frontE/__pycache__
 /trashcode.py
 /tests.py
-
+pkl_models/
 
 # Distribution / packaging
 .Python
