@@ -17,12 +17,5 @@
 !data/updated_dataset
 !data/book_model.py
 !data/models.py
-!frontE/styles
-!frontE/explorer.py
-!frontE/homePage.py
-!frontE/library.py
-!frontE/login.py
-!frontE/register.py
-!recommendations_serv/app/fictional_dataPrep.py
-!recommendations_serv/app/data_preparation.py
-!recommendations_serv/requirements.txt
+!frontE/
+!recommendations_serv/
