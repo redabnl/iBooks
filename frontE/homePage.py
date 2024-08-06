@@ -1,1380 +1,780 @@
 from flask import redirect
 import streamlit as st
-from data.book_model import  get_mongo_client, check_or_add_book_db, is_book_in_AR, add_book_to_already_read, add_review_to_book
+from data.book_model import fetch_book_subjects, fetch_books_by_title, get_mongo_client, add_book_to_already_read, add_book_to_wishlist, fetch_most_popular_articles, fetch_book_details,  update_reading_goal
+# from data.models import log_interaction
 from frontE.explorer import show_explorer_page
 from bson.objectid import ObjectId
-
 from PIL import Image
 from io import BytesIO
 import requests
 import os
+from datetime import datetime
+import logging
+import hashlib
+import streamlit.components.v1 as components
+import urllib.parse as urlparse
+from urllib.parse import parse_qs
 
-# client = get_mongo_client()
-# db = client['ibooks']
-# book_collection = db['books']
-# users_collection = db['users']
 
-# Initialize session state for favorites and search results
+logging.basicConfig(level=logging.INFO)
 
-# if 'favorites' not in st.session_state:
-#     st.session_state['favorites'] = []
+client = get_mongo_client()
+db = client['ibooks']
+book_collection = db['books']
+users_collection = db['users']
+reviews_collection = db['reviews']
 
-# if 'search_results' not in st.session_state:
-#     st.session_state['search_results'] = None
+
+# Delete books with missing or empty author names
+# result = book_collection.delete_many({'authors': {'$in': [None, '']}})
+
+# # Fetch all book IDs
+# book_ids = set(book['_id'] for book in book_collection.find({}, {'_id': 1}))
+
+# # Function to clean a user's collection
+# def clean_user_collection(collection_name, user_field):
+#     users = users_collection.find({collection_name: {'$exists': True}})
+#     for user in users:
+#         original_count = len(user.get(collection_name, []))
+#         cleaned_collection = [book_id for book_id in user.get(collection_name, []) if book_id in book_ids]
+#         if len(cleaned_collection) != original_count:
+#             users_collection.update_one({'_id': user['_id']}, {'$set': {collection_name: cleaned_collection}})
+#             print(f"Cleaned {collection_name} for user {user['pseudo']}. Removed {original_count - len(cleaned_collection)} missing book(s).")
+
+# # Clean the user's collections
+# clean_user_collection('wishlist', 'wishlist')
+# clean_user_collection('already_read', 'already_read')
+
+# # Clean the reviews collection
+# reviews = reviews_collection.find()
+# for review in reviews:
+#     if review['book_id'] not in book_ids:
+#         reviews_collection.delete_one({'_id': review['_id']})
+#         print(f"Deleted review for missing book ID {review['book_id']} by user {review['user_pseudo']}.")
+
+# print("cleaned all users collections")
+
+
+# Initialize session state for pagination
+if 'page' not in st.session_state:
+    st.session_state.page = 1
+if 'title_query' not in st.session_state :
+    st.session_state.title_query = ""
+
+# Function to update the page number
+def change_page(new_page):
+    st.session_state.page = new_page
+
+def search_book_by_title(title):
+    st.session_state.title_query = title
+    st.experimental_rerun()
+
+
+def inject_js():
+    js_code = """
+    <script>
+    function searchBook(title) {
+        const streamlitDoc = window.parent.document;
+        const input = streamlitDoc.querySelector("input[aria-label='Search by title input']");
+        const button = streamlitDoc.querySelector("button[aria-label='Search']");
+        input.value = title;
+        const event = new Event('input', { bubbles: true });
+        input.dispatchEvent(event);
+        button.click();
+    }
+    </script>
+    """
+    st.components.v1.html(js_code)
+inject_js()
+
+from streamlit.components.v1 import html
+
+# def make_clickable_title(title):
+#     # JavaScript to trigger a search with the clicked title
+#     js_code = f"""
+#     <script>
+#     function searchTitle(title) {{
+#         window.parent.document.querySelectorAll('input')[0].value = title;
+#         window.parent.document.querySelectorAll('button')[0].click();
+#     }}
+#     </script>
+#     <a href="javascript:searchTitle('{title}');">{title}</a>
+#     """
+#     return js_code
+def make_clickable_title(title):
+    return f'<a href="javascript:void(0);" onclick="window.location.href = \'?sub_search_query={title}\'">{title}</a>'
+
+def display_sidebar():
+    user_data = load_user_data(st.session_state['current_user'])
+    st.sidebar.title('Trending Articles')
+    trending_articles = fetch_most_popular_articles(os.getenv('NYT_API_KEY'))
+
+    if trending_articles:
+        if 'article_index' not in st.session_state:
+            st.session_state['article_index'] = 0
+        
+        article_index = st.session_state['article_index']
+        article = trending_articles[article_index]
+        title = article['title']
+        url = article['url']
+        media = article.get('media', [])
+        cover_url = media[0]['media-metadata'][0]['url'] if media else "frontE/styles/defaultimg.png"
+        st.sidebar.image(cover_url, width=100)
+        st.sidebar.write(f"[{title}]({url})")
+        if st.sidebar.button("Previous Article", key='previous_article'):
+            st.session_state['article_index'] = (article_index - 1) % len(trending_articles)
+            st.rerun()
+        if st.sidebar.button("Next Article", key='next_article'):
+            st.session_state['article_index'] = (article_index + 1) % len(trending_articles)
+            st.rerun()
+    else:
+        st.sidebar.write("No trending articles found.")
+        
+    st.sidebar.write("")
+    st.sidebar.title('Reading Goal')
+    current_goal = user_data['reading_goals'].get('goal', 'Not set')
+    books_read = len(user_data.get('already_read', []))
+
+    st.sidebar.write(f"You have read {books_read} book(s)")
+    st.sidebar.write("Set your reading goal:")
+    new_goal = st.sidebar.radio("Select goal:", [0, 25, 50, 100, 125, 150], index=[0, 25, 50, 100, 125, 150].index(current_goal))
+    st.session_state['reading_goal'] = new_goal
+
+    progress = (books_read / new_goal) * 100 if new_goal > 0 else 0
+    st.sidebar.write(f"Current Reading Goal: {new_goal} books")
+    st.sidebar.write(f"Books Read: {books_read}")
+
+    # Vertical progress bar
+    st.sidebar.markdown("""
+    <style>
+        .progress-container {
+            width: 100%;
+            background-color: #f3f3f3;
+            border-radius: 25px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background-color: #4caf50;
+            border-radius: 25px;
+            text-align: center;
+            color: white;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.sidebar.markdown(f"""
+    <div class="progress-container" style="height: 200px;">
+        <div class="progress-bar" style="height: {progress}%; width: 100%;">
+            {int(progress)}%
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if st.sidebar.button("Save Goal"):
+        st.session_state['reading_goal'] = new_goal
+
+
+def load_user_data(user_pseudo):
+    client = get_mongo_client()
+    db = client['ibooks']
+    user = db.users.find_one({"pseudo": user_pseudo})
+    return user
+
+def local_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+
+def fetch_personalized_recommendations(user_pseudo):
+    response = requests.get(f'http://localhost:5000/recommendations/{user_pseudo}')
+    return response.json().get('recommendations', [])
+
+def show_user_homepage(user_pseudo):
+    local_css("frontE/styles/homePage.css")
+
+    user_pseudo = st.session_state.get('current_user', 'default_user')
+    user_data = load_user_data(user_pseudo)
+
+    st.markdown("""
+    <style>
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8f9fa;
+            padding: 10px;
+        }
+        .nav-links {
+            display: flex;
+            gap: 15px;
+        }
+        .nav-links a {
+            text-decoration: none;
+            color: #000;
+            font-weight: bold;
+        }
+    </style>
     
+    """, unsafe_allow_html=True)
 
-# if 'current_book' not in st.session_state:
-#     st.session_state['current_book'] = None
+    # Sidebar
+    # st.sidebar.markdown("<div class='sidebar-section'>", unsafe_allow_html=True)
+    # st.sidebar.markdown("<h2>Trending Articles</h2>", unsafe_allow_html=True)
+    # trending_articles = fetch_most_popular_articles(os.getenv('NYT_API_KEY'))
+
+    # if trending_articles:
+    #     if 'article_index' not in st.session_state:
+    #         st.session_state['article_index'] = 0
+        
+    #     article_index = st.session_state['article_index']
+    #     article = trending_articles[article_index]
+    #     title = article['title']
+    #     url = article['url']
+    #     media = article.get('media', [])
+    #     cover_url = media[0]['media-metadata'][0]['url'] if media else "frontE/styles/defaultimg.png"
+    #     st.sidebar.image(cover_url, width=100)
+    #     st.sidebar.write(f"[{title}]({url})")
+
+    #     if st.sidebar.button("Previous Article", key='previous_article'):
+    #         st.session_state['article_index'] = (article_index - 1) % len(trending_articles)
+    #         st.rerun()
+    #     if st.sidebar.button("Next Article", key='next_article'):
+    #         st.session_state['article_index'] = (article_index + 1) % len(trending_articles)
+    #         st.rerun()
+    # else:
+    #     st.sidebar.write("No trending articles found.")
+    # st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
+    # st.sidebar.markdown("<div class='sidebar-section'>", unsafe_allow_html=True)
+    # st.sidebar.markdown("<h2>Reading Goal</h2>", unsafe_allow_html=True)
+    # if 'reading_goals' in user_data:
+        # current_goal = user_data['reading_goals'].get('goal', 'Not set')
+        # books_read = user_data.get('already_read', [])
+    #     st.sidebar.markdown(f"<p>You have read {len(books_read)} book(s)</p>", unsafe_allow_html=True)
+    # else:
+    #     current_goal = 'Not set'
+    #     books_read = []
+
+    # reading_goal = st.sidebar.radio(
+    #     "Set your reading goal:", 
+    #     [0, 25, 50, 100, 125, 150], 
+    #     index=[0, 25, 50, 100, 125, 150].index(current_goal) if current_goal != 'Not set' else 0,
+    #     key='reading_goal'
+    # )
+    # st.sidebar.markdown(f"<p>Current Reading Goal: {reading_goal} books</p>", unsafe_allow_html=True)
+    # st.sidebar.markdown(f"<p>Books Read: {len(books_read)}</p>", unsafe_allow_html=True)
     
-# if 'current_user' not in st.session_state:
-#     st.session_state['current_user'] = None
+    # if st.sidebar.button("Save Goal", key='save_goal'):
+    #     update_reading_goal(user_pseudo, reading_goal)
+    #     st.rerun()
+    # st.sidebar.markdown("</div>", unsafe_allow_html=True)
+    ###
+    display_sidebar()
+    # Main content
+    st.markdown("<div class='main-content'>", unsafe_allow_html=True)
+    st.markdown("<div class='search-bar'>", unsafe_allow_html=True)
+    st.write("What are we reading today?")
     
-# if 'button_clicked' not in st.session_state:
-#     st.session_state['button_clicked'] = {}
+    search_query = st.text_input("Enter book title to search:")
 
-
-
-def show_user_homepage():
-    user_pseudo = st.session_state['current_user']
-    # explorer_page_link =st.page_link(show_explorer_page)
-    st.header(f"{user_pseudo}'s Home Page")
-    st.write(f"Hi {user_pseudo}, welcome to your home page.")
-    
-    search_query = st.text_input("What book are we reading today!", "")
-    search_button = st.button("Search")
-    if search_button and search_query:
-         # Fetch book details from Open Library API
-            search_results = fetch_book_details(search_query, limit=9, page=1)
-            if search_results :
-                st.session_state['search_results'] = search_results
-                show_search_result(search_results)
-                # display_book_details(book)
-            
+    if st.button("Search"):
+        if search_query:
+            books = fetch_book_details(search_query, max_results=30)
+            if books:
+                st.session_state['searched_books'] = books
             else:
-                st.error("Cannot fetch the result.")  
-    elif st.session_state['search_results']:
-        show_search_result(st.session_state['search_results'])    
-    # else:
-    #     st.write("Looking for a specific book ? ")
-    #     st.write("If you don't have anything on your mind rn, Our trained model can help you find what you might be interested with :")
-    #     if st.button("explore new books :"):
-        
-    #         show_explorer_page()
-        
-        
+                st.write("No books found for the given title.")
+        else:
+            st.write("Please enter a search query.")
+    if 'searched_books' in st.session_state:
+        display_books_grid(st.session_state['searched_books'])
 
+    # search_query = st.text_input("Enter Book Title:")
 
-##########################################################
-## OPEN LIBRARY SEARCH API FUNCTION
-def fetch_book_details(search_query, limit=9, page=1):
-    search_url = f"https://openlibrary.org/search.json?q={search_query}&limit={limit}&page={page}"
-    try:
-        response = requests.get(search_url)
-        data = response.json()
-        books = data['docs']
-        filtered_books = []
+    # if st.button("Search"):
+    #     if search_query:
+    #         books = fetch_book_details(search_query)
+    #         if books:
+    #             st.session_state['searched_books'] = books
+    #         else:
+    #             st.write("No books found for the given title.")
+    # if 'searched_books' in st.session_state:
+    #     display_books_grid([st.session_state['searched_books']])
 
-        for book in books:
-            if 'ratings_average' in book and 'ratings_count' in book:
-                filtered_books.append(book)
-
-        # Sort books by ratings_average in descending order
-        sorted_books = sorted(filtered_books, key=lambda x: x['ratings_average'], reverse=True)
-
-        return sorted_books
-    except Exception as e:
-        print(f"An error occurred while fetching data: {e}")
-        return []
-
-
-
-## FILTER THE BOOKS FETCHED FROM THE OPEN LIBRAY API
-def filter_books(search_results):
-    filtered_books = []
-    for book in search_results:
-        try:
-            ratings_average = book.get('ratings_average', 0)
-            ratings_count = book.get('ratings_count', 0)
-            if ratings_average > 0 and ratings_count > 0:
-                filtered_books.append(book)
-        except KeyError:
-            continue
-    # Sort books  in descending order
-    filtered_books.sort(key=lambda x: x.get('ratings_count', 0), reverse=True)
-    return filtered_books
-
-
-def show_search_result(search_result):
-    filtered_books = filter_books(search_result)
-    if not filtered_books:
-        st.error(f"cannot fetch the books ")
-        return
-    st.write(f"we have found {len(filtered_books)} book for you !")
-    for book in filtered_books :
-        display_book_details(book)    
-        
-        
-
+    query_params = st.experimental_get_query_params()
+    sub_search_query = query_params.get('search_query', [None])[0]
+    if sub_search_query:
+        books = fetch_book_details(sub_search_query)
     
+    #
+    # Initializinf session state for pagination
+    if 'page' not in st.session_state:
+        st.session_state.page = 1
+    SUBJECTS = [
+        "art", "biographies", "children", "computers", "education", 
+        "fiction", "history", "mathematics", "medicine", "philosophy", 
+        "religion", "science", "technology"
+    ]
+    subject = st.selectbox("Select a subject", options=SUBJECTS, key='subject_multiselect')
+    if st.button("Search by Subject", key='search_by_subject'):
+        if subject:
+            books = fetch_book_subjects(subject, page=st.session_state.page)
+            if books:
+                st.write(f"Subject: {subject}, Number of books fetched: {len(books)}")
+                st.session_state['searched_books_sub'] = books
+            else:
+                st.write("No books for selected category! Try something else maybe.")
     
+    if 'searched_books_sub' in st.session_state:
+        display_books_grid_subject(st.session_state['searched_books_sub'])
+
+    # Handle search by title if present in query parameters
+    query_params = st.experimental_get_query_params()
+    if 'title' in query_params:
+        title = query_params['title'][0].replace('%20', ' ')
+        st.write(f"Searching for books with title: {title}")
+        books_by_title = fetch_book_details(title)
+        if books_by_title:
+            st.write(f"Found {len(books_by_title)} book(s) matching the title '{title}'")
+            display_books_grid(books_by_title)
+        else:
+            st.write(f"No books found for title '{title}'")
+
+
+    #####################################################################################
+    # if 'searched_books_sub' in st.session_state:
+    #     display_books_grid(st.session_state['searched_books'])
+    # if st.button("Search by Subject", key='search_by_subject'):
+    #     if subject:
+    #         books = fetch_book_subjects(subject, limit=40 ,page=st.session_state.page)
+    #         if books:
+    #             st.write(f"Subject: {subject}, Number of books fetched: {len(books)}")
+    #             st.session_state['searched_books_sub'] = books
+    #         else:
+    #             st.write("No books for selected category! Try something else maybe.")
     
-def display_book_details(book):
-    # Check or add book to database
-    book_id = check_or_add_book_db(book)
-    title = book.get('title', 'No Title Available')
-    author = ' '.join(book.get('authors', ['Unknown Author']))
-    published_year = book.get('first_publish_year', 'Unknown')
-    isbn_list = book.get('isbn', [])
-    isbn = isbn_list[0] if isbn_list else 'N/A'
-    cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-    ratings_average = book.get('ratings_average', 0)
-    ratings_count = book.get('ratings_count', 0)
-    already_read_count = book.get('already_read_count',0)
-    user_pseudo = st.session_state.get('current_user', 'guest')
-
-    # Check if cover URL is valid
-    def is_valid_url(url):
-        try:
-            response = requests.get(url)
-            if response.status_code == 200:
-                img = Image.open(BytesIO(response.content))
-                return True
-        except Exception as e :
-            print(f"URL error {e}")
-            return False
-        return False
-
-    if cover_url and is_valid_url(cover_url):
-        st.image(cover_url, width=100)
-    else:
-        st.image('images/default_book_cover.png', width=100)
-
-    st.write(f"**Title:** {title}")
-    st.write(f"**Author:** {author}")
-    st.write(f"**Published Year:** {published_year}")
-    st.write(f"**ISBN:** {isbn}")
-    st.write(f"**Average rating :** {ratings_average}")
-    st.write(f"**Ratings count :** {ratings_count}")
-    st.write(f"**Read by :** {already_read_count} for now ")
-    
-
-    if isbn != 'N/A':
-        purchase_url = f"https://cheaper99.com/{isbn}"
-        link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-        st.markdown(link_html, unsafe_allow_html=True)
-    else:
-        st.write("No purchase link available.")
-
-    if book_id:
-        st.write(f"**ID:** {book_id}")
-    else:
-        st.write("No ID found")
-        
-    book_check = is_book_in_AR(user_pseudo, book_id)
-    if book_check : 
-        st.write("this book is already in your favs")
-        with st.form(key=f'review_form_{book_id}'):
-            review_text = st.text_area("Leave a review:")
-            rating = st.slider("Rate the book:", 1, 5, 3)
-            submit_button = st.form_submit_button("Submit Review")
-            if submit_button:
-                if add_review_to_book(book_id, user_pseudo, review_text, rating):
-                    st.success("Review submitted successfully!")
-    else :
-        fav_check_key = f"alreadu_read_{book_id}"
-        book_coll_check = st.button('add to your read books collection', key=fav_check_key ) # , on_click=add_book_to_already_read, args=(user_pseudo, book_id)
-        if book_coll_check :
-            add_book_to_already_read(user_pseudo, book_id) 
-            st.session_state['already_read'].append(book_id)
-            st.session_state['button_clicked'][book_id] = True  
-            st.success(f"Added {title} to 'Already Read'")
-            
-            # Display form for review and rating
-            with st.form(key=f'review_form_{book_id}'):
-                review_text = st.text_area("Leave a review:")
-                rating = st.slider("Rate the book:", 1, 5, 3)
-                submit_button = st.form_submit_button("Submit Review")
-                if submit_button:
-                    if add_review_to_book(book_id, user_pseudo, review_text, rating):
-                        st.success("Review submitted successfully!")
-        
-    
-    # if st.checkbox(f"Add to 'Already Read'", key=f'already_read_{book_id}'):
-    #     if is_book_in_AR(user_pseudo, book_id) :
-    #         with st.form(key=f'review_form_{book_id}'):
-    #             review_text = st.text_area("Leave a review:")
-    #             rating = st.slider("Rate the book:", 1, 5, 3)
-    #             submit_button = st.form_submit_button("Submit Review")
-    #             if submit_button:
-    #                 if add_review_to_book(book_id, user_pseudo, review_text, rating):
-    #                     st.success("Review submitted successfully!")
-    #     else :
-    #         add_book_to_already_read(user_pseudo, book_id)
-    #         st.success(f"Added {title} to 'Already Read'")
-    #         with st.form(key=f'review_form_{book_id}'):
-    #             review_text = st.text_area("Leave a review:")
-    #             rating = st.slider("Rate the book:", 1, 5, 3)
-    #             submit_button = st.form_submit_button("Submit Review")
-    #             if submit_button:
-    #                 if add_review_to_book(book_id, user_pseudo, review_text, rating):
-    #                     st.session_state['already_read'].append(book_id)
-    #                     st.session_state['button_clicked'][book_id] = True
-    #                     st.success("Review submitted successfully!")
-    # user_pseudo = st.session_state['current_user']
-    # # st.write(f"We have found {len(search_results)} books for you!")
-    # if search_results and 'docs' in search_results :
-    #     books = search_results['docs']
-        
-    # for book in books:
-        
-    #     book_id = check_or_add_book_db(book)
-    #     title = book.get('title', 'No Title Available')
-    #     author = book.get('author_name', [])
-    #     published_year = book.get('first_publish_year', 'Unknown')
-    #     isbn_list = book.get('isbn', [])
-    #     isbn = isbn_list[0] if isbn_list else 'N/A'
-    #     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-        # ratings_average = book.get('ratings_average', 0)
-        # ratings_count = book.get('ratings_count', 0)
-        # already_read_count = book.get('already_read_count',0)
-        
-    #     ## checking if the book is added to the user's collection
-        
-        
-    #     if book_id == 'N/A':
-    #         print(f"error getting book ID {SyntaxError}")
-    #     elif book_id != 'N/A' :
-        
-    #         col1, col2 = st.columns([1, 2])
-    #         with col1:
-    #             if cover_url:
-    #                 st.image(cover_url, width=150)
-    #             else:
-    #                 st.write("No image found")
-    #         with col2:
-    #             if book_id:
-    #                 st.markdown(f"**ID:** {book_id}")
-    #             else:
-    #                 st.markdown("**ID:** No ID found")
-    #             st.markdown(f"**Title:** {title}")
-    #             st.markdown(f"**Author:** {author}")
-    #             st.markdown(f"**Published Year:** {published_year}")
-    #             st.markdown(f"**ISBN:** {isbn}")
-    #             if isbn != 'N/A':
-    #                 purchase_url = f"https://cheaper99.com/{isbn}"
-    #                 link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-    #                 st.markdown(link_html, unsafe_allow_html=True)
-    #             else:
-    #                 st.warning("No purchase link available.")
-
-    #             st.markdown(f"**AVG RATING:** {ratings_average} \n (Based on {ratings_count} user's ratings)")
-    #             st.markdown(f"**Read by:** {already_read_count} users.")
-    #             st.markdown("Did you read it already too?")
-                
-                
-                # book_check = is_book_in_AR(user_pseudo, book_id)
-        
-                # if book_check :
-                    # st.write("this book is already in your favs")
-                    # with st.form(key=f'review_form_{book_id}'):
-                    #     review_text = st.text_area("Leave a review:")
-                    #     rating = st.slider("Rate the book:", 1, 5, 3)
-                    #     submit_button = st.form_submit_button("Submit Review")
-                    #     if submit_button:
-                    #         if add_review_to_book(book_id, user_pseudo, review_text, rating):
-                    #             st.success("Review submitted successfully!")
-                # else :
-                #     button_key = f"already_read_{book_id}"
-                    # book_collection_btn = st.button('add to your read books collection', key=button_key ) # , on_click=add_book_to_already_read, args=(user_pseudo, book_id)
-                    # if book_collection_btn :
-                    #     add_book_to_already_read(user_pseudo, book_id) 
-                    #     st.session_state['already_read'].append(book_id)
-                    #     st.session_state['button_clicked'][book_id] = True  
-                    #     st.success(f"Added {title} to 'Already Read'")
-                        
-                    #     # Display form for review and rating
-                    #     with st.form(key=f'review_form_{book_id}'):
-                    #         review_text = st.text_area("Leave a review:")
-                    #         rating = st.slider("Rate the book:", 1, 5, 3)
-                    #         submit_button = st.form_submit_button("Submit Review")
-                    #         if submit_button:
-                    #             if add_review_to_book(book_id, user_pseudo, review_text, rating):
-                    #                 st.success("Review submitted successfully!")
-                
-                    
-                    
+    # if 'searched_books_sub' in st.session_state:
+    #     display_books_grid_subject(st.session_state['searched_books_sub'])
+    ###################################################################################
+                # cols = st.columns(3)
+                # for idx, book in enumerate(books):
+                #     with cols[idx % 3]:
+                #         st.image(book['cover_url'], use_column_width=True)
+                #         title = book.get('title', 'N/A')
+                #         st.markdown(f"<a href='#' onclick=\"searchBook('{title}')\">**Title: {title}**</a>", unsafe_allow_html=True)
+                #         with st.popover(f"Show details for {book.get('title', 'N/A')}"):
+                #             st.write(f"**Published Year:** {book.get('first_publish_year', 'N/A')}")
+                #             st.write(f"**Publisher:** {', '.join(book.get('publisher', [])) if 'publisher' in book else 'N/A'}")
+                #             st.write(f"**ISBN:** {', '.join(book.get('isbn', [])) if 'isbn' in book else 'N/A'}")
+                #             st.write(f"**Summary:** {book.get('summary', 'None')}")
+                #             st.write(f"**Subjects:** {', '.join(book.get('subject', [])) if 'subject' in book else 'N/A'}")
+                #             st.write(f"**Ratings average:** {book.get('ratings_average', 0)}")
                     
 
-
-
-
-
-            
-                # add_book_to_already_read(user_pseudo, book_id)
-                # 
-        #st.write("**********************************************************")
-            # if cover_url:
-            #     st.image(cover_url, width=150)
-            # else:
-            #     st.write("No image found")
-            # st.write(f"**Title:** {book.get('title', 'No Title Available')}")
-            # st.write(f"**Author:** {', '.join(book.get('authors', ['Unknown Author']))}")
-            # st.write(f"**Published Year:** {book.get('first_publish_year', 'Unknown Year')}")
-            # st.write(f"[Buy this book](https://cheaper99.com/{isbn})" if isbn != 'N/A' else "No purchase link available.")
-            
-                # Additional fields and checks
-            
-                
-                
-                # if st.checkbox(f"Add to 'Already Read'", key=f'already_read_{book_id}'):
-                #     user_pseudo = st.session_state['current_user']
-                #     add_book_to_already_read(user_pseudo, book_id)
-                #     st.success(f"Added {book.get('title', 'this book')} to 'Already Read'")
-    # if search_results and 'docs' in search_results:
-    #     books = search_results['docs']
-    #     for book in books:
-    #         print(f" ********************** \n fetching book {book}")
-    #         display_book_details(book)
-    
-    # elif not search_results:
-    #     st.write("No results found.")
-    #     return
-
-        
-        
-# def display_book_details(book):
-#     book_id = book.get('_id', 'N/A')
-    
-    
-    # title = book.get('title', 'No Title Available')
-    # author = book.get('author_name', [])
-    # published_year = book.get('first_publish_year', 'Unknown')
-#     isbn_list = book.get('isbn', [])
-#     isbn = isbn_list[0] if isbn_list else 'N/A'
-#     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-    # ratings_average = book.get('ratings_average', 0)
-    # ratings_count = book.get('ratings_count', 0)
-    # already_read_count = book.get('already_read_count',0)
-    
-    # if book_id == 'N/A':
-    #     print(f"error getting book ID {SyntaxError}")
-    # elif book_id != 'N/A' :
-    
-    #     col1, col2 = st.columns([1, 2])
-    #     with col1:
-    #         if cover_url:
-    #             st.image(cover_url, width=150)
+                # Add pagination controls
+    #             if st.session_state.page > 1:
+    #                 st.button("Previous Page", on_click=change_page, args=(st.session_state.page - 1,))
+    #             if len(books) == 9:  # Assuming 9 books per page
+    #                 st.button("Next Page", on_click=change_page, args=(st.session_state.page + 1,))
     #         else:
-    #             st.write("No image found")
-    #     with col2:
-    #         if book_id:
-    #             st.markdown(f"**ID:** {book_id}")
-    #         else:
-    #             st.markdown("**ID:** No ID found")
-    #         st.markdown(f"**Title:** {title}")
-    #         st.markdown(f"**Author:** {author}")
-    #         st.markdown(f"**Published Year:** {published_year}")
-    #         st.markdown(f"**ISBN:** {isbn}")
-    #         if isbn != 'N/A':
-    #             purchase_url = f"https://cheaper99.com/{isbn}"
-    #             link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-    #             st.markdown(link_html, unsafe_allow_html=True)
-    #         else:
-    #             st.warning("No purchase link available.")
-
-    #         st.markdown(f"**AVG RATING:** {ratings_average} \n (Based on {ratings_count} user's ratings)")
-    #         st.markdown(f"**Read by:** {already_read_count} users.")
-    #         st.markdown("Did you read it already too?")
-    
-    
-    # if cover_url:
-    #     st.image(cover_url, width=100)
-    # else:
-    #     st.write("No image found")
-    # st.write(f"**Title:** {title}")
-    # st.write(f"**Author:** {author}")
-    # st.write(f"**Published Year:** {published_year}")
-    # st.write(f"**ISBN:** {isbn}")
-    # if isbn != 'N/A':
-    #     purchase_url = f"https://cheaper99.com/{isbn}"
-    #     link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-    #     st.markdown(link_html, unsafe_allow_html=True)
-    # else:
-    #     st.write("No purchase link available.")
-
-    # if book_id:
-    #     st.write(f"**ID:** {book_id}")
-    # else:
-    #     st.write("No ID found")
+    #             st.write("No books found for the selected subject.")
         
-    # st.write(f"**AVG RATING :** : {ratings_average}")
-    # st.write(f"Based on {ratings_count} user's ratings")
-
-    # st.write(f"Read by {already_read_count} users.")
-    # st.write("Did you read it already too ?")
-    
-    # btn_key = book_id if book_id else f'Unv ID'
-    # if st.button(f"Add to 'Already Read'", key=btn_key):
-    #     try:
-    #         add_book_to_already_read(book_id)
-    #         st.success(f"Added {title} to 'Already Read'")
-            
-    #     except Exception as e:
-    #         print(f"an error occured : \n {e}")
-    #         return False
-
-# function to perform a search query from the open library APi 
-# def search_openAPI_lib(search, limit=9, page=1):
-#     search_url = f"https://openlibrary.org/search.json?q={search}&limit={limit}&page={page}"
-    # try:
-    #     response = requests.get(search_url)
-    #     if response.ok:
-    #         results = response.json()
-    #         books = results.get('docs', [])
-            
-    #         unique_books = []
-    #         seen_isbns = set()
-    #         for book in books:
-                
-    #             isbn_list = book.get('isbn', [])
-    #             if isbn_list:
-    #                 isbn = isbn_list[0]
-    #                 if isbn not in seen_isbns:
-    #                     seen_isbns.add(isbn)
-    #                     unique_books.append(book)
-    #             if len(unique_books) >= limit:
-    #                 break
-            
-    #         return {'docs': unique_books}
+    # if st.session_state.title_query:
+    #     books = fetch_book_details(st.session_state.title_query)
+    #     if books:
+    #         display_books_grid(books)
     #     else:
-    #         st.error('Failed to retrieve data from Open Library')
-    #         return None
-    # except requests.RequestException as e:
-    #     st.error(f"An error occurred while fetching data: {e}")
-#         return None
-
-
-# def show_search_result(search_results):
-    # if search_results and 'docs' in search_results:
-    #     books = search_results['docs']
-        
-#         # Create rows of books, three books per row
-#         rows = [books[i:i + 3] for i in range(0, len(books), 3)]
-#         for row in rows:
-#             cols = st.columns(3)  # Create three columns
-#             for idx, book in enumerate(row):
-#                 with cols[idx]:
-#                     # check_or_add_book_to_db(book)
-#                     display_book_details(book)
-    
-
-    
-
-
-# def redirect_to_cheaper99(isbn):
-#     return redirect(f"https://cheaper99.com/{isbn}")
-    
-# def display_book_details(book):
-#     book_id = check_or_add_book_db(book)
-#     title = book.get('title', 'No Title Available')
-#     author = ', '.join(book.get('authors', ['Unknown Author']))
-#     published_year = book.get('first_publish_year', 'Unknown')
-#     isbn_list = book.get('isbn', [])
-#     isbn = isbn_list[0] if isbn_list else 'N/A'
-#     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#     user_pseudo = st.session_state.get('current_user', 'guest')
-
-#     if cover_url:
-#         st.image(cover_url, width=100)
-#     else:
-#         st.write("No image found")
-
-#     st.write(f"**Title:** {title}")
-#     st.write(f"**Author:** {author}")
-#     st.write(f"**Published Year:** {published_year}")
-#     st.write(f"**ISBN:** {isbn}")
-
-#     if isbn != 'N/A':
-#         purchase_url = f"https://cheaper99.com/{isbn}"
-#         link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-#         st.markdown(link_html, unsafe_allow_html=True)
-#     else:
-#         st.write("No purchase link available.")
-
-#     if book_id:
-#         st.write(f"**ID:** {book_id}")
-#     else:
-#         st.write("No ID found")
-
-#     if st.checkbox(f"Add to 'Already Read'", key=f'already_read_{book_id}'):
-#         add_book_to_already_read(user_pseudo, book_id)
-#         st.success(f"Added {title} to 'Already Read'")
-# def get_open_library_data(title):
-#     url = f"https://openlibrary.org/search.json?title={title}"
-#     response = requests.get(url)
-#     if response.status_code == 200:
-#         data = response.json()
-#         return data['docs']
-#     else:
-#         st.error("Error fetching data from Open Library API")
-#         return []
-    
-
-
-
-
+    #         st.write(f"no book found for the book : {st.session_state.title_query}")
+        # all_books = []
+        # for s in subject:
+        #     books = fetch_book_subjects(s, limit=9, page=1)
+        #     st.write(f"Subject: {s}, Number of books fetched: {len(books)}")
             
-# Function to handle the search form 
-# def search_book_form():
-    
-#     search_query = st.text_input("what book we reading today !")
-#     submitt_search = st.button(label="search")
-    
-#     if submitt_search and search_query : 
-#         search_results = search_openAPI_lib(search_query, limit=9, page=1)
-#         if search_results:
-#             st.session_state['search_results'] = search_results
-#             print(f'new books found for you : \n ')
-#             # show_search_result( st.session_state['current_user'],search_results)
-#             show_search_result(search_results)
-#             return search_results
-#         else :
-#             print("cannot fetch the result : ")
-##################### CHATGPT CODE :
-# def search_book_form():
-#     search_query = st.text_input("What book are we reading today!")
-#     submitt_search = st.button(label="Search")
-    
-#     if submitt_search and search_query:
-#         search_results = search_openAPI_lib(search_query)
-        
-        
-#         st.session_state['search_results'] = search_results
-#         show_search_result(search_results)
-#         return search_results
-#     else:
-#             st.write("Cannot fetch the result.")
-        
-        
-###############################
-# def show_search_result(search_results):
-#     if search_results and 'docs' in search_results:
-#         books = search_results['docs']
-#         # Create rows of books, three books per row
-#         rows = [books[i:i + 3] for i in range(0, len(books), 3)]
-#         for row in rows:
-#             cols = st.columns(3)  # Create three columns
-#             for idx, book in enumerate(row):
-#                 # check_or_add_book_to_db(book)
-#                 with cols[idx]:
-#                     # check_or_add_book_to_db(book)
-#                     display_book_details(book)
-############################ CHATGOT CODE :
-# def show_search_result(search_results):
-#     if search_results and 'docs' in search_results:
-#         books = search_results['docs']
-        
-#         rows = [books[i:i + 3] for i in range(0, len(books), 3)]
-#         for row in rows:
-#             cols = st.columns(3)
-#             for idx, book in enumerate(row):
-#                 book_id = check_or_add_book_db(book)
-#                 book['_id'] = book_id
-#                 with cols[idx]:
-#                     display_book_details(book)
-                    
-                    
-# def display_book_details(book, user_pseudo):
-#     book_id = book.get('_id', 'No ID found')
-#     title = book.get('title', 'No Title Available')
-#     author = ', '.join(book.get('author_name', ['Unknown Author']))
-#     published_year = book.get('first_publish_year', 'Unknown Year')
-#     isbn_list = book.get('isbn', [])
-#     isbn = isbn_list[0] if isbn_list else 'N/A'
-#     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-    # ratings_average = book.get('ratings_average', 0)
-    # ratings_count = book.get('ratings_count', 0)
-    
-#     st.write(f"**Title:** {title}")
-#     st.write(f"**Author:** {author}")
-#     st.write(f"**Published Year:** {published_year}")
-#     st.write(f"**ISBN:** {isbn}")
-#     if cover_url:
-#         st.image(cover_url, width=100)
-#     else:
-#         st.write("No image found")
-#     st.write(f"**ID:** {book_id}")
-#     st.write(f"**Average Rating:** {ratings_average}")
-#     st.write(f"**Ratings Count:** {ratings_count}")
-    
-#     if st.checkbox(f"Add to 'Already Read'", key=f"{book_id}_checkbox"):
-#         add_to_already_read(book_id, user_pseudo)
-#         st.success(f"Added {title} to 'Already Read'")
-        
-        
-# def main():
-#     st.title("Book Finder")
-#     st.write("Hi poutil, welcome to your home page.")
-#     book_title = st.text_input("What book are we reading today?", "")
-#     user_pseudo = st.text_input("Enter your pseudo:", "")
-#     if st.button("Search"):
-#         books = search_openAPI_lib(book_title)
-#         if books:
-#             for book in books:
-                # book_id = check_or_add_book_db(book)
-                # book['_id'] = book_id
-                # display_book_details(book, user_pseudo)
-#         else:
-#             st.write("No books found")
+            # all_books.extend(books)
 
-# if __name__ == "__main__":
-#     main()
-
-    # checkbox_key = f"checkbox_{book_id}"
-    # already_read = st.checkbox("Add to 'Already Read'", key=checkbox_key)
-    # if already_read:
-    #     add_to_already_read(user_pseudo, book_id)
-    #     st.success(f"Added {title} to 'Already Read'")
-
-        
-    # Handling add to favorites without refresh
-    # if st.button(f"Add to Favorites {book_id}", key=f"fav_{book_id}"):
-    #     add_to_favorites(user_pseudo, book_id)
-    #     st.success(f"Added {title} to favorites")
-                    
-
-# def display_book_details(book):
-#     book_id = check_or_add_book_db(book)
-#     title = book.get('title', 'No Title Available')
-#     author = book.get('author_name', ['Unknown Author'])[0]
-#     published_year = book.get('first_publish_year', 'Unknown Year')
-#     isbn_list = book.get('isbn', [])
-#     isbn = isbn_list[0] if isbn_list else 'N/A'
-#     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-    
-#     user_pseudo = st.session_state['current_user']
-
-#     if cover_url:
-#         st.image(cover_url, width=100)
-#     else:
-#         st.write("No image found")
-
-#     st.write(f"**Title:** {title}")
-#     st.write(f"**Author:** {author}")
-#     st.write(f"**Published Year:** {published_year}")
-#     st.write(f"**ISBN:** {isbn}")
-
-#     if isbn != 'N/A':
-#         purchase_url = f"https://cheaper99.com/{isbn}"
-#         link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-#         st.markdown(link_html, unsafe_allow_html=True)
-#     else:
-#         st.write("No purchase link available.")
+        # if all_books:
+        #     for i in range(0, len(all_books), 3):
+        #         cols = st.columns(3)
+        #         for col, book in zip(cols, all_books[i:i+3]):
+        #             col.image(book.get('cover_url', r"frontE\styles\defaultimg.png"), use_column_width=True)
+        #             # col.image(f"https://covers.openlibrary.org/b/id/{book.get('cover_i')}-L.jpg" if 'cover_i' in book else r"frontE/styles/defaultimg.png", width=150)
+        #             col.write(f"**Title**: {book['title']}")
+        #             col.write(f"**Author(s)**: {', '.join(author['name'] for author in book['authors']) if 'authors' in book else 'N/A'}")
+        #             with col.popover(f"Show details for {book['title']}"):
+        #                 display_book_details(book)
         
     
-#     if book_id != None :
-#         st.write(f"**ID :** {book_id}")
-#     else :
-#         st.write("No ID found")
-        
-#     if st.button("Add to Favorites", key=book_id):
-#             add_to_favorites(st.session_state['current_user'] , book_id)
-    # if st.button("Leave a Review", key=book['isbn'] + "_review"):
-    #         st.text_input("Enter your review")
-    #         st.slider("Rating", 1, 5)
+    # if 'searched_books_sub' in st.session_state:
+    #     all_books = st.session_state['searched_books_sub']
+    #     display_books_grid_subject(all_books)
+    # else:
+    #     st.write("Search for books by title or subject to display them here.")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def display_books_grid(books):  
+    displayed_ids = set()
+    cols = st.columns(3)
+    idx = 0
+    
+    for book in books:
+        if book['_id'] not in displayed_ids:
+            displayed_ids.add(book['_id'])
+            print(f"book id : {book['_id']}")
+            with cols[idx % 3]:
+                st.image(book.get('cover_url', 'styles/defaultimg.png'), use_column_width=True)
+                st.write(f"**Title:** {book.get('title', 'N/A')}")
+                st.write(f"**Author(s):** {book.get('authors', ['N/A'])}")
+                
+                # Generate unique keys for each button
+                read_button_key = f"read_{book['_id']}"
+                wishlist_button_key = f"wishlist_{book['_id']}"
+
+                # if st.button("Mark as Read", key=read_button_key):
+                #     add_book_to_read(user_pseud, book['_id'], book)
+                
+                if st.button(f"Add to Wishlist", key=wishlist_button_key):
+                    st.write(f"Clicked Add to Wishlist for book_id: {book['title']}")
+                    if add_book_to_wishlist(st.session_state['current_user'], book['_id']):
+                        st.success(f"{book.get('title', 'Book')} added to your wishlist")
+                    else:
+                        st.error("Failed to add the book to your wishlist")
+                if st.button(f"add read books", key=read_button_key):
+                    st.write(f"Clicked Add to Read for book_id: {book['title']}")
+                    if add_book_to_already_read(st.session_state['current_user'], book['_id']):
+                        st.success(f"{book.get('title', 'Book')} added to your read books")
+                
+                # st.write(f"Clicked Add to Wishlist for book_id: {book['_id']}")
+                with st.popover(f"book details for {book['title']}"):
+                    display_book_details(book)
+            
+            idx += 1
     
 
-    
 
-# def add_to_favorites(user_pseudo, book_id):
-#     user = users_collection.find_one({"pseudo": user_pseudo})
-#     if user:
-#         users_collection.update_one(
-#             {"pseudo": user_pseudo}, 
-#             {"$addToSet": {"favBooks": ObjectId(book_id)}}
-#         )
-
-
-
-
-
-
-# def check_if_favorite(user_pseudo, book_id):
-#     # Implement a check to see if the book_id is in the user's favBooks list
-#     with get_mongo_client() as client:
-#         db = client['ibooks']
-#         users_collection = db['users']
-#         user = users_collection.find_one({'pseudo': user_pseudo})
-#         return book_id in user.get('favBooks', [])
-
-
-
-
-
-# def add_to_favorites(user_pseudo, book_id):
-#     # Add book_id to the user's favBooks list
-#     with get_mongo_client() as client:
-#         db = client['ibooks']
-#         users_collection = db['users']
-#         users_collection.update_one({'pseudo': user_pseudo}, {'$addToSet': {'favBooks': book_id}})
-#         st.success("Added to favorites!")
-
-
-
-
-
-# def remove_from_favorites(user_pseudo, book_id):
-#     # Remove book_id from the user's favBooks list
-#     with get_mongo_client() as client:
-#         db = client['ibooks']
-#         users_collection = db['users']
-#         users_collection.update_one({'pseudo': user_pseudo}, {'$pull': {'favBooks': book_id}})
-#         st.success("Removed from favorites!")
-
-
-
-
-
-
-# def add_to_favorites_new(user_pseudo, book_id):
-#     with get_mongo_client() as client:
-#         db = client['ibooks']
-#         users_collection = db['users']
-        
-#         # Ensure book_id is in a correct format
-#         if not ObjectId.is_valid(book_id):
-#             print("Invalid book ID")
-#             return False
-
-#         # book_id_str = str(ObjectId(book_id))  # Ensure the book ID is a string format
-#         user = users_collection.find_one({'pseudo': user_pseudo})
-#         if user:
-#             fav_books_ids = user.get('favBooks', [])
-#             if book_id not in fav_books_ids:
-#                 fav_books_ids.append(book_id)
-#                 users_collection.update_one(
-#                     {'pseudo': user_pseudo},
-#                     {'$set': {'favBooks': fav_books_ids}}
-#                 )
-#                 return True
-#             else:
-#                 return False
-#         return False
-
-# def display_book_details(book):
-#     title = book.get('title', 'No Title Available')
-#     author = book.get('author_name', ['Unknown Author'])[0]
-#     published_year = book.get('first_publish_year', 'Unknown Year')
-#     isbn_list = book.get('isbn', [])
-#     isbn = isbn_list[0] if isbn_list else 'N/A'
-#     cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#     if cover_url:
-#         st.image(cover_url, width=100)
-#     else:
-#         st.write("No image found")
-
-#     st.write(f"**Title:** {title}")
-#     st.write(f"**Author:** {author}")
-#     st.write(f"**Published Year:** {published_year}")
-#     st.write(f"**ISBN:** {isbn}")
-
-#     if isbn != 'N/A':
-#         purchase_url = f"https://cheaper99.com/{isbn}"
-#         link_html = f'<a href="{purchase_url}" target="_blank">Buy this book</a>'
-#         st.markdown(link_html, unsafe_allow_html=True)
-#     else:
-#         st.write("No purchase link available.")
-
-#     # Generate a unique key for the button using the book ID
-#     fav_button_key = f"fav_{isbn}"  # Ensure the key is unique
-#     button_pressed = st.button("Add to Favorites", key=fav_button_key)
-
-#     # Manage button press
-#     if button_pressed:
-#         st.session_state[f'pressed_{fav_button_key}'] = True
-
-#     # Handle after button press
-#     if st.session_state.get(f'pressed_{fav_button_key}'):
-#         user_pseudo = st.session_state.get('current_user', 'default_user')
-#         book_id = str(book['_id'])  # Assuming book['_id'] is stored correctly
-#         if add_to_favorites_new(user_pseudo, book_id):
-#             st.success("Book added to favorites!")
-#             # Optionally reset the button state after handling
-#             st.session_state[f'pressed_{fav_button_key}'] = False
-#         else:
-#             st.error("Failed to add book to favorites or already in favorites.")
-#             # Optionally reset the button state after handling
-#             st.session_state[f'pressed_{fav_button_key}'] = False
-            
-            
-# # Dummy function for adding a book to favorites, replace with actual function call
-# def add_to_favorites_new(user_pseudo, book_id):
-#     with get_mongo_client() as client:
-#         db = client['ibooks']
-#         users_collection = db['users']
-#         book_collection = db['books']
-        
-#         # Make sure the book_id is a valid ObjectId
-#         if not ObjectId.is_valid(book_id):
-#             print("Invalid book ID")
-#             return False
-
-#         # Convert book_id to string format to store in favBooks as per your database schema
-#         book_id_str = book_collection.find_one(book_id)
-#         user = users_collection.find_one({'pseudo': user_pseudo})
-#         if user:
-#             fav_books_ids = user.get('favBooks', [])
-#             if book_id_str not in fav_books_ids:
-#                 fav_books_ids.append(book_id_str)
-#                 users_collection.update_one(
-#                     {'pseudo': user_pseudo},
-#                     {'$set': {'favBooks': fav_books_ids}}
-#                 )
-#                 print("Book added to favorites")  # Debug message
-#                 return True
-#             else:
-#                 print("Book already in favorites")  # Debug message
-#                 return False
-#         else:
-#             print("User not found")  # Debug message
-#             return False
-#         # print(f"Attempting to add book {book_id} for user {user_pseudo}")
-#         # return True
-
-# def display_book_details(book):
-#     db = with get_mongo_client
-#     user_pseudo = st.session_state['current_user']  # Example user, replace with st.session_state.get('current_user') if set
-#     book_collection = db['books']
-#     book_id = str(book.get(''))  # Assume book['_id'] is already a string or convert as needed
-
-#     # Display book details
-#     st.write(f"Title: {book.get('title', 'No Title Available')}")
-#     if st.button(f"Add to Favorites", key=f"fav-{book_id}"):
-#         st.write("Button pressed")  # Immediate feedback
-#         if add_to_favorites_new(user_pseudo, book_id):
-#             st.success("Book added to favorites!")
-#         else:
-#             st.error("Failed to add book to favorites or already in favorites.")
-
-# Example book data
-# book_example = {
-#     '_id': '662aacb2d290c293abf7f519',
-#     'title': "The Adventures of Sherlock Holmes"
-#}
-
-# Call the display function
-# display_book_details(book_example)
-                
-            
-                        
-# def display_book_details(book):
-#     if isinstance(book, dict):
-#         # Assuming 'books' is a dictionary containing book details
-#         title = book.get('title', 'No Title')
-#         author = book.get('author', ['Unknown'])
-#         published_year = book.get('published_year', 'Not Available')
-#         isbn_list = book.get('isbn', [])
-#         if isbn_list:
-#                 isbn = isbn_list[0] 
-#         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#         # Display details
-#         if cover_url:
-#             st.image(cover_url, caption=title, width=100)
-#         url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
-#         title_link = f"<a href='{url}' target='_blank'>{title}</a>"
-#         st.markdown(title_link, unsafe_allow_html=True)
-        
-#         st.write(f"**Title:** {title}")
-#         st.write(f"**Author:** {author}")
-#         st.write(f"**First Published Year:** {published_year}")
-#         st.write(f"**ISBN:** {isbn}")
-        
-        
-#     else:
-#         st.error("Data format not recognized, expected a dictionary.")
-        
-        
-        
-
-# def review_form(user_pseudo, book_id):
-#     with st.form(key='review_form'):
-#         review_text = st.text_area("Review Text", placeholder="Enter your review here...")
-#         rating = st.slider("Rating", min_value=1, max_value=5, value=3)
-#         submit_button = st.form_submit_button("Submit Review")
-        
-#         if submit_button:
-#             success = submit_review(user_pseudo, book_id, review_text, rating)
-#             if success:
-#                 st.success("thanks for leaving a review !")
-#                 return user_pseudo, book_id, review_text, rating
-#             else:
-#                 st.error("failed to add your review")
-                
-                
-
-
-# def show_search_result(user_pseudo, search_results):
-#     if search_results and 'docs' in search_results:
-#         books = search_results['docs']  
-        
-#         for index, book in enumerate(books[:9]):  # Limiting to display only the first 9 books
-#             isbn = book.get('isbn') 
-#             unique_key = f"fav_{index}_{isbn}"
-            
-#             # Check if the book is in the database and add if not
-#             book_in_db = check_or_add_book_to_db(book)
-#             book_id = book_in_db.get('_id') if book_in_db else None
-            
-#             if isinstance(book, dict):
-#                 title = book.get('title')
-#                 author = book.get('author_name')
-#                 published_year = book.get('first_publish_year'),
-#                 isbn_list = book.get('isbn', [])
-#                 if isbn_list:
-#                         isbn = isbn_list[0] 
-#                 cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#                 # Display details
-#                 if cover_url:
-#                     st.image(cover_url, caption=title, width=100)
-#                 url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
-#                 title_link = f"<a href='{url}' target='_blank'>{title}</a>"
-#                 st.markdown(title_link, unsafe_allow_html=True)
-                
-#                 st.write(f"**Title:** {title}")
-#                 st.write(f"**Author:** {author}")
-#                 st.write(f"**First Published Year:** {published_year}")
-#                 st.write(f"**ISBN:** {isbn}")
-                
-#                 # is_favorite = is_book_in_favs(user_pseudo, isbn) if isbn else False
-
-        
-     
-#                 fav_checked = st.checkbox("Add to favorites", value=book_id in st.session_state['favorites'], key=unique_key)
-#                 try :
-#                     # fav_checked = st.checkbox("Add to favorites", value=is_favorite , key=unique_key)
-#                     if fav_checked and is_book_in_favs == True:
-#                         print(f"book {book_id} is already in favs ")
-#                         # success = add_book_to_favorites(user_pseudo, book_id)  # Your function to add to DB
-#                         # if success:
-#                         #       # Update session state
-#                         #     st.session_state['favorites'].append(book_id)
-#                         #     st.success("Book added to favorites successfully.")
-#                     elif fav_checked and is_book_in_favs == False :
-#                         print(f"book {title} to be added to favorites <3")
-#                         success = add_book_to_favorites(user_pseudo, book_id)
-#                         if success :
-#                             # Update session state
-#                             st.session_state['favorites'].append(book_id)
-#                             st.success(f"book's id {book_id} is added successfully !!")
-#                     else :
-#                         print(f"error adding the book !")
-#                 except KeyError as e:
-#                     st.error(f"Error occurred: {e}")
-                
-                    
-
-
-
-# def show_search_results(user_pseudo, search_results):
-#     if search_results is None or 'docs' not in search_results:
-#         st.error("No valid search results available to display.")
-#         return
-
-#     books = search_results['docs']
-#     for index, book in enumerate(books[:9]):  # Limiting to display only the first 9 books
-#         isbn_list = book.get('isbn', [])
-#         isbn = isbn_list[0] if isbn_list else 'N/A'
-#         unique_key = f"fav_{index}_{isbn}"
-
-#         # Initialize session state for each book's favorite button
-#         if unique_key not in st.session_state['button_clicked']:
-#             st.session_state['button_clicked'][unique_key] = False
-
-#         # Check if the book is in the database and add if not
-#         book_in_db = check_or_add_book_to_db(book)
-#         book_id = book_in_db.get('_id') if book_in_db else None
-
-#         # Extract book details
-#         title = book.get('title', 'No Title')
-#         author = ', '.join(book.get('author_name', ['Unknown Author']))
-#         published_year = book.get('first_publish_year', 'Not Available')
-#         cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#         # Display details
-#         if cover_url:
-#             st.image(cover_url, caption=title, width=100)
-#         url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
-#         title_link = f"<a href='{url}' target='_blank'>{title}</a>"
-#         st.markdown(title_link, unsafe_allow_html=True)
-        
-#         st.write(f"**Title:** {title}")
-#         st.write(f"**Author:** {author}")
-#         st.write(f"**First Published Year:** {published_year}")
-#         st.write(f"**ISBN:** {isbn}")
-#         is_fav = is_book_in_favs(user_pseudo, book_id)
-
-
-#         add_fav = st.checkbox("Add this book to your favorites", key=unique_key, value=is_fav)
-#         # Execute logic based on checkbox state
-#         if add_fav and add_fav== True:
-            
-#             st.write(f"Book with ID {book_id} is already in your favorites.")
-#         elif add_fav and add_fav== False:
-#                 if add_book_to_favorites(user_pseudo, book_id):
-#                     st.write(f"Book with ID {book_id} has been added to your favorites.")
-#                 else:
-#                     st.write("Failed to add the book to your favorites.")
-#         else:
-#             st.write("Check the box to add this book to your favorites.")
-        
-        
-        
-            
-            
-        # if st.session_state['button_clicked'][unique_key]:
-        #     try:
-        #         book_details = {
-        #             'title': title,
-        #             'author': author,
-        #             'published_year': published_year,
-        #             'isbn': isbn
-        #         }
-        #         check_booksFav = is_book_in_favs(user_pseudo, isbn)
-        #         if check_booksFav == True :
-        #             st.warning("This book is already in your favorites list!")
-        #         elif check_booksFav == False :
-        #             handle_add_to_favorites(user_pseudo, book_details)
-            # except KeyError as e:
-            #     st.error(f"Error occurred: {e}")
-            # finally:
-            #     st.session_state['button_clicked'][unique_key] = False 
-
-# def show_search_result(user_pseudo, search_results):
-#     if search_results and 'docs' in search_results:
-#         books = search_results['docs']
-        
-#         for index, book in enumerate(books[:9]):  # Limiting to display only the first 9 books
-#             isbn_list = book.get('isbn', [])
-#             isbn = isbn_list[0] if isbn_list else 'N/A'
-#             unique_key = f"fav_{index}_{isbn}"
-            
-#             # Initialize session state for each book's favorite button
-#             if unique_key not in st.session_state['button_clicked']:
-#                 st.session_state['button_clicked'][unique_key] = False
-
-#             # Check if the book is in the database and add if not
-#             book_in_db = check_or_add_book_to_db(book)
-#             book_id = book_in_db.get('_id') if book_in_db else None
-
-#             # Extract book details
-#             title = book.get('title', 'No Title')
-#             author = ', '.join(book.get('author_name', ['Unknown Author']))
-#             published_year = book.get('first_publish_year', 'Not Available')
-#             cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#             # Display details
-#             if cover_url:
-#                 st.image(cover_url, caption=title, width=100)
-#             url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
-#             title_link = f"<a href='{url}' target='_blank'>{title}</a>"
-#             st.markdown(title_link, unsafe_allow_html=True)
-            
-#             st.write(f"**Title:** {title}")
-#             st.write(f"**Author:** {author}")
-#             st.write(f"**First Published Year:** {published_year}")
-#             st.write(f"**ISBN:** {isbn}")
-
-#             add_fav_btn = st.button("Add this book to your favorites", key=unique_key)
-
-#             if add_fav_btn:
-#                 st.session_state['button_clicked'][unique_key] = True
-#                 st.write("Button clicked")  # Debug info
-#             else:
-#                 st.write("Button not clicked")  # Debug info
-
-#             if st.session_state['button_clicked'][unique_key]:
-#                 try:
-#                     book_details = {
-#                         '_id' : book_id,
-#                         'title': title,
-#                         'author': author,
-#                         'published_year': published_year,
-#                         'isbn': isbn
-#                     }
-#                     added = handle_add_to_favorites(user_pseudo, book_details)
-#                     if added:
-#                         st.success(f"Book (ISBN: {isbn}) added to your favorites.")
-#                     else:
-#                         st.warning("This book is already in your favorites.")
-#                 except KeyError as e:
-#                     st.error(f"Error occurred: {e}")
-#                 finally:
-#                     st.session_state['button_clicked'][unique_key] = False 
-        
-        
-        
-
-    
-    
-    # search_book_form(search_query = st.text_input("Search for a new book here!"))
-        
-
-# def show_search_result(user_pseudo, search_results):
-#     if search_results and 'docs' in search_results:
-        
-        
-#         books = search_results['docs']
-        
-#         for index, book in enumerate(books[:9]):  # Limiting to display only the first 9 books
-#             isbn_list = book.get('isbn', [])
-#             isbn = isbn_list[0] if isbn_list else 'N/A'
-#             print(f"book's isbn : {isbn} \n")
-            
-            
-#             # Check if the book is in the database and add if not
-#             book_in_db = check_or_add_book_to_db(book)
-#             book_id = book_in_db.get('_id') if book_in_db else None
-#             unique_key = f"fav_{index}_{isbn}"
-#             title = book.get('title')
-#             author = ', '.join(book.get('author_name', ['Unknown Author']))
-#             published_year = book.get('first_publish_year')
-#             cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn != 'N/A' else None
-
-#                 # Display details
-#             if cover_url:
-#                 st.image(cover_url, caption=title, width=100)
-                    
-#             book_details = {
-#                 'title': book.get('title'),
-#                 'author': book.get('author_name'),
-#                 'isbn': isbn,
-#                 'published_year': book.get('first_publish_year'),
-#                 'cover_url': cover_url,
-#                 'reviews' : []
-#                     }    
-                
-#             url = f"https://cheaper99.com/{isbn}" if isbn != 'N/A' else "#"
-#             title_link = f"<a href='{url}' target='_blank'>{title}</a>"
-#             st.markdown(title_link, unsafe_allow_html=True)
-                
-#             st.write(f"**Title:** {title}")
-#             st.write(f"**Author:** {author}")
-#             st.write(f"**First Published Year:** {published_year}")
-#             st.write(f"**ISBN:** {isbn}")
-                
-#             # print(f"book details : {book_details}")
-                
-#             add_fav_btn = st.button("add this book to your favorites", key=unique_key)
-#             if add_fav_btn :
-#                 try :
-#                     added = handle_add_to_favorites(user_pseudo, book_details)
-#                     if added :
-#                         st.success("book added yazaabiiiii")
-#                 except(KeyError) as e :
-#                     print(f"error occured : \n {e}")
-                    
-                
-                
-            # if fav_check :
-            #     print("fav clicked")
-            #     if book_id : 
-            #         handle_add_to_favorites(user_pseudo, book_details)
-            #         print(f"book's id : {book_id} added ")   
-            #     else :
-            #         print(f"book's id : {book_id} not added ")
-                    
-                    
-                    
-
-
-       
-
-# def main():
-#     user_pseudo = "user123"
-#     search_query = st.text_input("Search for a new book here!", key="search_query")
-#     submit_search = st.button("search")
-    
-#     if submit_search and search_query:
-#         search_results = search_openAPI_lib(search_query)
-#         if search_results:
-#             show_search_result(user_pseudo, search_results)
-#         else:
-#             st.error("No search results found.")
-
-# if __name__ == "__main__":
-#     main()
-
-
-            # if isinstance(book, dict):
-                
-                   
-                                
-                
-                
-            # else:
-            #     st.error("No valid search results available to display.")
-                
-            # fav_checked = st.checkbox("Add to favorites", value=book_id in st.session_state['favorites'], key=unique_key)
-            # if fav_checked and book_id not in st.session_state['favorites']:
-            #     success = add_to_favs(user_pseudo, book_details)  # Your function to add to DB
-            #     if success:
-            #         st.session_state['favorites'].append(book_id)  # Update session state
-            #         st.success("Book added to favorites successfully.")
+# Function to display book details
+
+def display_book_details(book):
+    st.write("## Book Details")
+
+    #authors = book.get('authors', [])
+    # if isinstance(authors, list):
+    #     try:
+    #         author_names = ', '.join([author.get('name', 'Unknown') for author in authors[:3]])
+    #     except AttributeError:
+    #         author_names = ', '.join(authors[:3]) if authors else 'N/A'
+    # elif isinstance(authors, str):
+    #     author_names = authors
+    # else:
+    #     author_names = 'N/A'
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.image(book.get('cover_url', r"frontE\styles\defaultimg.png"), use_column_width=True)
+    with col2:
+        st.write(f"**Title:** {book.get('title', 'N/A')}", unsafe_allow_html=True, on_click=fetch_book_details, args=(book.get('title'),))
+        st.write(f"**Author(s):** {book.get('authors', ['N/A'])}")
+        st.write(f"**Published Year:** {book.get('published_year', 'N/A')}")
+        st.write(f"**Publisher:** {book.get('publisher', ['N/A'])}")  # Take first three publishers
+        st.write(f"**ISBN:** {book.get('isbn', 'N/A')}")
+        st.write(f"**Summary:** {book.get('summary', 'N/A')}")
+        st.write(f"**Subjects:** {book.get('categories', ['N/A'])}")  # Take first three subjects
+        st.write(f"**Ratings average** {book.get('ratings_average', 'N/A')}")
+
+
+def update_page_number(new_page):
+    st.session_state.current_page = new_page
+#######################################################################
+########################################################################
+## --------------- BOOKS SUBJECT DISPLAY FUNC
+# def display_books_grid_subject(books):
+#     books_per_page = 10  # Number of books to display per page
+#     total_pages = (len(books) + books_per_page - 1) // books_per_page  # Calculate total number of pages
+
+#     # Allow user to select the page number
+#     page_numbers = list(range(1, total_pages + 1))
+#     selected_page = st.selectbox('Select page', page_numbers)
+
+#     # Display books for the selected page
+#     start_idx = (selected_page - 1) * books_per_page
+#     end_idx = start_idx + books_per_page
+#     current_books = books[start_idx:end_idx]
+
+#     cols = st.columns(3)
+#     for idx,  book in enumerate( current_books):
+#         with cols[idx % 3]:
+#             # if 'cover_i' in book and book['cover_i']:
+#             #     st.image(book['cover_i'], use_column_width=True)
+#             # else:
+#             #     st.image(r"frontE\styles\defaultimg.png", use_column_width=True)
+#             st.image(book['cover_url'], r"frontE\styles\defaultimg.png", use_column_width=True)
+#             st.markdown(make_clickable_title(book['title']), unsafe_allow_html=True)
+#             authors = ', '.join([author['name'] for author in book['authors'] if 'name' in author])
+#             st.write(f"**Author(s):** {authors}")
+
+#     # Navigation buttons
+#     col1, col2, col3 = st.columns(3)
+#     with col1:
+#         if selected_page > 1:
+#             if st.button("Previous Page"):
+#                 st.session_state.current_page = selected_page - 1
+#                 st.experimental_rerun()
+#     with col2:
+#         st.write(f"Page {selected_page} of {total_pages}")
+#     with col3:
+#         if selected_page < total_pages:
+#             if st.button("Next Page"):
+#                 st.session_state.current_page = selected_page + 1
+#                 st.experimental_rerun()
+###########################################################################################
+import streamlit as st
+
+def display_books_grid_subject(books):
+    books_per_page = 10  # Number of books to display per page
+    total_pages = (len(books) + books_per_page - 1) // books_per_page  # Calculate total number of pages
+
+    # Allow user to select the page number
+    page_numbers = list(range(1, total_pages + 1))
+    selected_page = st.selectbox('Select page', page_numbers)
+
+    # Display books for the selected page
+    start_idx = (selected_page - 1) * books_per_page
+    end_idx = start_idx + books_per_page
+    current_books = books[start_idx:end_idx]
+
+    cols = st.columns(3)
+    for idx, book in enumerate(current_books):
+        with cols[idx % 3]:
+            st.image(book['cover_url'], use_column_width=True)
+            st.markdown(f"[**{book['title']}**](?title={book['title'].replace(' ', '%20')})", unsafe_allow_html=True)
+            authors = book.get('authors', ['Unknown Author'])
+            st.write(f"**Author(s):** {authors}")
+
+    # Navigation buttons
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if selected_page > 1:
+            if st.button("Previous Page"):
+                st.session_state.page = selected_page - 1
+                st.experimental_rerun()
+    with col3:
+        if selected_page < total_pages:
+            if st.button("Next Page"):
+                st.session_state.page = selected_page + 1
+                st.experimental_rerun()
+
+    st.write(f"Page {selected_page} of {total_pages}")
+
+
+
+##########################
+    # cols = st.columns(3)
+    # for idx, (col, book) in enumerate(zip(cols * (len(paginated_books) // 3 + 1), paginated_books)):
+    #     with col : 
+    #         if 'cover_url' in book and book['cover_url']:
+    #             st.image(book['cover_url'], use_column_width=True)
+    #         else:
+    #             st.image(r"frontE\styles\defaultimg.png", use_column_width=True)
+    #     col.markdown(make_clickable_title(book['title']), unsafe_allow_html=True)
+    #     # col.image(book['cover_url'], use_column_width=True)
+    #     # col.write(f"**Title:** {book['title']}")
+    #     authors = ', '.join([author['name'] for author in book['authors'] if 'name' in author])
+    #     # col.markdown(make_clickable_title(book['title']), unsafe_allow_html=True)
+    #     col.write(f"**Author(s):** {authors}")
+    #######################################
+    # Pagination controls
+    # prev_page, next_page = st.columns(2)
+
+    # if prev_page.button("Previous Page"):
+    #     change_page(-1)
+
+    # if next_page.button("Next Page"):
+    #     change_page(+1)
+        # if st.session_state.current_page * books_per_page < len(books):
+        #     st.session_state.current_page += 1
+            # read_button_key = f"read_{book['_id']}"
+            # wishlist_button_key = f"wishlist_{book['_id']}"
+
+            # if col.button("Mark as Read", key=read_button_key):
+            #     add_book_to_read_list(user_pseudo_id, book['_id'])
+            # if col.button("Add to Wishlist", key=wishlist_button_key):
+            #     add_book_to_wishlist(user_pseudo_id, book['_id'])
+        # with col.popover(f"Show details for {book.get('title', 'N/A')}"):
+        #     display_book_details(book)
+                # col.write(f"**Published Year:** {book.get('published_year', 'N/A')}")
+                # col.write(f"**Publisher:** {book.get('publisher', 'N/A')}")
+                # col.write(f"**ISBN:** {book.get('isbn', 'N/A')}")
+                # col.write(f"**Summary:** {book.get('summary', 'N/A')}")
+                # col.write(f"**Categories:** {book.get('categories', 'N/A')}")
+                # col.write(f"**Cover URL:** {book.get('cover_url', 'N/A')}")
+
+
+
+
+# def display_books_grid(books):
+#     displayed_books = set()
+#     cols = st.columns(3)
+#     for idx, (col, book) in enumerate(zip(cols, books)):
+#         with col:
+#             book_id = book['_id']
+#             if book_id not in displayed_books:
+#                 displayed_books.add(book_id)
+            # cover_url = book.get('cover_url', r'styles/defaultimg.png')
+            # col.image(cover_url, use_column_width=True)
+            # col.write(f"**Title:** {book.get('title', 'N/A')}")
+            # col.write(f"**Author(s):** {book.get('authors', 'N/A')}")
+            # read_button_key = f"read_{book_id}"
+            # if col.button("Mark as Read", key=read_button_key):
+            #     add_book_to_already_read(st.session_state['current_user'], book_id)
+            #     st.write(f"Marked as read: {book_id}")
+            # # Add book to wishlist
+            # wishlist_button_key = f"wishlist_{book_id}"
+            # if col.button(f"Add to Wishlist", key=wishlist_button_key):
+            #     st.write(f"Clicked Add to Wishlist for book_id: {book_id}")
+            #     if add_book_to_wishlist(st.session_state['current_user'], book_id):
+            #         st.success(f"{book.get('title', 'Book')} added to your wishlist")
             #     else:
-            #         st.error("Failed to add book to favorites.")
-            # elif not fav_checked and book_id in st.session_state['favorites']:
-            #     success = remove_for_favs(user_pseudo, book_id)  # Your function to remove from DB
-            #     if success:
-            #         st.session_state['favorites'].remove(book_id)  # Update session state
-            #         st.success("Book removed from favorites successfully.")
+            #         st.error("Failed to add the book to your wishlist")
+            # with st.popover(f"Show details for {book.get('title')}"):
+            #     display_book_details(book)
+#             idx += 1
+#                 st.write(f"**Published Year:** {book.get('published_year', 'N/A')}")
+#                 st.write(f"**Publisher:** {book.get('publisher', 'N/A')}")
+#                 st.write(f"**ISBN:** {book.get('isbn', 'N/A')}")
+#                 st.write(f"**Summary:** {book.get('summary', 'N/A')}")
+#                 st.write(f"**Categories:** {book.get('categories', 'N/A')}")
+#                 st.write(f"**Cover URL:** {book.get('cover_url', 'N/A')}")
+        # col.button(f"Leave a Review for {book.get('title', 'N/A')}", key=f"review_{book['_id']}")
+        # col.selectbox(f"Show details for {book.get('title', 'N/A')}", options=["Summary", "ISBN", "Published Year", "Publisher"], key=f"details_{book['_id']}")
 
-            # if book_id:
-            #     with st.expander("Leave a Review"):
-            #         form_key = f"{unique_key}_form"
-            #         with st.form(form_key):
-            #             review_text = st.text_area("Review Text", placeholder="Enter your review here...", key=f'review_text_{isbn}')
-            #             rating = st.slider("Rating", min_value=1, max_value=5, key=f'rating_{isbn}')
-            #             submit_button = st.form_submit_button("Submit Review")
+        #col.button("Add to Wishlist", key=f"wishlist_{book['_id']}")
 
-            #             if submit_button:
-                            
-            #                 add_review_to_book(user_pseudo, isbn, review_text, rating)
-            #                 print("adding you review ...")
-            #                 if add_review_to_book() != False:
-                                
-            #                     st.success("Your review has been added!")
-            #                 else:
-            #                     st.error("Failed to add your review.")
-    
-    
+# def display_books_grid(books):
+#     cols = st.columns(3)
+#     for idx, (col, book) in enumerate(zip(cols, books)):
+#         with col:
+#             book_id = book.get('_id')
+#             cover_url = book.get('cover_url', r'styles/defaultimg.png')
+#             col.image(cover_url, use_column_width=True)
+#             col.write(f"**Title:** {book.get('title', 'N/A')}")
+#             col.write(f"**Author(s):** {book.get('authors', 'N/A')}")
+#             read_button_key = f"read_{book_id}_{idx}"
+#             if col.button("Mark as Read", key=read_button_key):
+#                 add_book_to_already_read(st.session_state['current_user'], book_id)
+#                 st.write(f"Marked as read: {book_id}_{idx}")
+#             # Add book to wishlist
+#             wishlist_button_key = f"wishlist_{book_id}_{idx}"
+#             if col.button(f"Add to Wishlist", key=wishlist_button_key):
+#                 st.write(f"Clicked Add to Wishlist for book_id: {book_id}")
+#                 if add_book_to_wishlist(st.session_state['current_uer'], book_id):
+#                     st.success(f"{book.get('title', 'Book')} added to your wishlist")
+#                 else:
+#                     st.error("Failed to add the book to your wishlist")
+#             with st.popover(f"Show details for {book.get('title')}"):
+#                 st.write(f"**Published Year:** {book.get('published_year', 'N/A')}")
+#                 st.write(f"**Publisher:** {book.get('publisher', 'N/A')}")
+#                 st.write(f"**ISBN:** {book.get('isbn', 'N/A')}")
+#                 st.write(f"**Summary:** {book.get('summary', 'N/A')}")
+#                 st.write(f"**Categories:** {book.get('categories', 'N/A')}")
+#                 st.write(f"**Cover URL:** {book.get('cover_url', 'N/A')}")
+        # col.button(f"Leave a Review for {book.get('title', 'N/A')}", key=f"review_{book['_id']}")
+        # col.selectbox(f"Show details for {book.get('title', 'N/A')}", options=["Summary", "ISBN", "Published Year", "Publisher"], key=f"details_{book['_id']}")
 
 
-# def main():
-#     user_pseudo = "user123"
-#     search_query = st.text_input("Search for a new book here!", key="search_query")
-#     submit_search = st.button("search")
-    
-#     if submit_search and search_query:
-#         search_results = search_openAPI_lib(search_query)
-#         if search_results:
-#             show_search_result(user_pseudo, search_results)
-#         else:
-#             st.error("No search results found.")
 
-# if __name__ == "__main__":
-#     main()
+# def display_books_grid(books):
+#     cols = st.columns(3)
+#     for idx, (col, book) in enumerate(zip(cols, books)):
+#         with col:
+#             st.image(book.get("cover_url", "styles/defaultimg.png"), use_column_width=True)
+#             st.write(f"**Title:** {book.get('title', 'N/A')}")
+#             st.write(f"**Author(s):** {book.get('authors', 'N/A')}")
+#             if st.button("Mark as Read", key=f"read_{book['_id']}"):
+#                 st.write(f"Marked {book.get('title')} as read.")
+            # # Add book to wishlist
+            # wishlist_button_key = f"wishlist_{book['_id']}"
+            # if col.button(f"Add to Wishlist", key=wishlist_button_key):
+            #     st.write(f"Clicked Add to Wishlist for book_id: {book['_id']}")
+            #     if add_book_to_wishlist(user_pseudo=st.session_state['current_uer'], book_id=book['_id']):
+            #         st.success(f"{book.get('title', 'Book')} added to your wishlist")
+            #     else:
+            #         st.error("Failed to add the book to your wishlist")
+#             # Popover to display book details
+            # with st.popover(f"Show details for {book.get('title')}"):
+            #     st.write(f"**Published Year:** {book.get('published_year', 'N/A')}")
+            #     st.write(f"**Publisher:** {book.get('publisher', 'N/A')}")
+            #     st.write(f"**ISBN:** {book.get('isbn', 'N/A')}")
+            #     st.write(f"**Summary:** {book.get('summary', 'N/A')}")
+            #     st.write(f"**Categories:** {book.get('categories', 'N/A')}")
+            #     st.write(f"**Cover URL:** {book.get('cover_url', 'N/A')}")
 
+# Updated display_books_grid function to handle book details
+# def display_books_grid(books):
+#     user_pseudo = st.session_state['current_user']
+    # # for i in range(0, len(books), 3):
+    # #     cols = st.columns(3)
+    # #     for idx, (col, book) in enumerate(zip(cols, books[i:i+3])):
+    # cols = st.columns(3)
+#     for idx, (col, book) in enumerate(zip(cols, books)):
+#         with col : 
+#             # Ensure the book is stored in the database and has an _id field
+#             book_id = check_or_add_book_db(book)
+#             if book_id == 'N/A':
+#                 st.error("Failed to get or add book to the database")
+#                 continue
             
-                # fav_checked = st.checkbox("❤️ Add to favorites", key=unique_key)
-                
-                # if fav_checked : 
-                #     book_details = {}
-                #     handle_add_to_favorites(user_pseudo, book_details)
-                    
-                        
-                
-
-                # if fav_checked and is_book_in_favs == True:
-                #     success = add_to_favs(user_pseudo, book_id)
-                #     if success : 
-                #         print (f"book added to favorites collection with id : {book_id}")
-                #         st.success("book added succesfully !")
-                # elif fav_checked == False:
-                #     success = remove_for_favs(user_pseudo, book_id)
-                #     if success : 
-                #         print (f"book removed from favorites collection with id : {book_id}")
-                #         st.success("book removed succesfully !")
-                    
-                    
-                    # if not st.session_state[unique_key]:  # Only handle the logic once when the checkbox is checked
-                    #     st.session_state[unique_key] = True
-                    #     if not any(book['isbn'] == isbn for book in st.session_state['favorites']):
-                    #         book_details = {
-                    #             'title': book.get('title', 'No Title'),
-                    #             'author': author,
-                    #             'published_year': published_year,
-                    #             'isbn': isbn
-                    #         }
-                    #         st.session_state['favorites'].append(book_details)
-                    #         handle_add_to_favorites(user_pseudo, isbn)
-                    #         st.success(f"Book (ISBN: {isbn}) added to your favorites.")
-                    #     else:
-                    #         st.warning("This book is already in your favorites.")
-                
-                
-
-
- 
- 
-
-#             # cover_url = f"https://covers.openlibrary.org/b/isbn/{isbn}-M.jpg" if isbn else None
+#             cover_url = book.get('cover_url', r"frontE\styles\defaultimg.png")
+#             col.image(cover_url, width=150)
+#             col.write(f"**Title:** {book.get('title', 'No Title')}")
             
-#             # book_details = {
-#             #             'title': book.get('title'),
-#             #             'author': book.get('author_name'),
-#             #             'isbn': isbn,
-#             #             'published_year': book.get('first_publish_year'),
-#             #             'cover_url': cover_url,
-#             #             'reviews' : []
-#             #         }
-#             # print(f"book found : \n {book_details} \n ")
+#             authors = book.get('authors', [])
+#             if isinstance(authors, list):
+#                 try:
+#                     author_names = ', '.join([author.get('name', 'Unknown') for author in authors]) if authors else 'N/A'
+#                 except AttributeError:
+#                     author_names = ', '.join(authors) if authors else 'N/A'
+#             elif isinstance(authors, str):
+#                 author_names = authors
+#             else:
+#                 author_names = 'N/A'
             
+#             col.write(f"**Author(s):** {author_names}")
             
-#             # Check if the book is already a favorite
+#             # Add book to already_read collection
+#             read_button_key = f"read_{book_id}"  #_{i+idx}
+#             if col.button(f"Mark as Read", key=read_button_key):
+#                 st.write(f"Clicked Mark as Read for book_id: {book_id}")
+#                 if add_book_to_already_read(user_pseudo, book_id):
+#                     st.success(f"{book.get('title', 'Book')} added to your read books collection")
+#                 else:
+#                     st.error("Failed to add the book to your read books collection")
 
+            # # Add book to wishlist
+            # wishlist_button_key = f"wishlist_{book_id}"
+            # if col.button(f"Add to Wishlist", key=wishlist_button_key):
+            #     st.write(f"Clicked Add to Wishlist for book_id: {book_id}")
+            #     if add_book_to_wishlist(user_pseudo, book_id):
+            #         st.success(f"{book.get('title', 'Book')} added to your wishlist")
+            #     else:
+            #         st.error("Failed to add the book to your wishlist")
 
-#             # print(f"book type : \n {type(book)} \n ")
-#             # Display book details
+#             # Review book
+#             with col.expander(f"Leave a Review for {book['title']}"):
+#                 review_form_key = f"review_form_{book_id}"
+#                 with st.form(key=review_form_key):
+#                     review_text = st.text_area("Review:", key=f"review_text_{book_id}")
+#                     rating = st.slider("Rating:", 1, 5, key=f"rating_{book_id}")
+#                     submit_button = st.form_submit_button(label="Submit Review")
+#                     if submit_button:
+#                         st.write(f"Submitting review for book_id: {book_id}")
+#                         if add_review_to_book(user_pseudo, book_id, review_text, rating):
+#                             st.success("Review submitted successfully")
+#                         else:
+#                             st.error("Failed to submit review")
 
-#                 # else:
-#                 #     handle_book_selection(user_pseudo=st.session_state['current_user'], search_results=st.session_state['search_results'])
-                    
-
-#                 if book_id:
-#                     with st.expander("Leave a Review"):
-#                         with st.form(key=f'review_form_{index}'):
-#                             review_text = st.text_area("Review Text", placeholder="Enter your review here...")
-#                             rating = st.slider("Rating", min_value=1, max_value=5, value=3)
-#                             submit_button = st.form_submit_button("Submit Review")
-
-#                             if submit_button:
-#                                 add_review_to_book(user_pseudo, book_id, review_text, rating)
-#                                 success = submit_review(user_pseudo, book_id, review_text, rating)
-#                                 if success:
-#                                     st.success("Your review has been added!")
-#                                 else:
-#                                     st.error("Failed to add your review.")
-                
-
-#         return search_results
-#     else:
-#         st.error("No valid search results available to display.")
-
-
-# Function to display the homepage
-
-
-# def main():
-#     # Check login state
-#     if st.session_state.get('logged_in', False):
-#         show_user_homepage(pseudo=st.session_state['current_user'])  # Show the homepage if the user is logged in
-#     else:
-#         st.write("Please log in.")  # Or redirect them to the login page
-
-# if __name__ == "__main__":
-#     main()
-
-
-
-
-
-
-
-
+#             # Book details expanded with a popover widget
+#             with col.popover(f"Show details for {book['title']}"):
+#                 display_book_details(book)
 
 
 

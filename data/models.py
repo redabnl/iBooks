@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import logging
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timezone
 
 def get_mongo_client():
     return MongoClient(os.getenv('MONGO_DB_URI'))
@@ -29,6 +29,11 @@ def initialize_database():
     # And the 'reviews' collection doesn't need a unique index since it can have dupllicated fields
     if 'reviews' not in db.list_collection_names():
         db.create_collection('reviews')
+        
+    if 'interactions' not in db.list_collection_names():
+        db.create_collection('interactions')
+        
+    
 
     print("Database and collections are initialized.")
 
@@ -56,7 +61,13 @@ def create_user(pseudo, pwd):
         "isPrivate": False,  
         "account_creation_date": datetime.now(), 
         "already_read": [],  
-        "borrowedBooks": []  # Empty array as placeholder
+        "borrowedBooks": [],  # Empty array as placeholder
+        "reading_goals":{
+            "goal": 0,
+            "books_read": 0,
+        },
+        "reviews": [],
+        "wishlist" : []
     }
     #insert the new user into the users collection
     db.users.insert_one(user)
@@ -86,32 +97,151 @@ def get_user_details(pseudo):
 
 
 
-def add_review_to_book(user_pseudo, book_id, review_text, rating): ##takes user_id, book_id, text and rating as input and adds it to the databsae 
-    with get_mongo_client() as client:
-        db = client['ibooks']
-        reviews_collection = db['reviews']
-        try:
-            review = {
-                "user_id": user_pseudo,
-                "book_id": book_id,
-                "review_text": review_text,
-                "rating": rating,
-                "timestamp": datetime.datetime.now()
-            }
-            reviews_collection.insert_one(review)
-            return True
-        except Exception as e:
-            print(f"An error occurred: {e}")
-            return False
-
-
-
-
 
 def logout():
     st.session_state['logged_in'] = False
     st.session_state['current_user'] = None
+    st.session_state['searched_books'] = None
     st.write("You have been logged out.")
+    
+    
+    
+# client = get_mongo_client()
+# db = client['ibooks']
+# user_collection = db['users']
+# review_collection = db['reviews']
+# interaction_collection = db['interactions']
+
+# # # Function to migrate existing interactions to the "interactions" collection
+# # # Function to migrate existing interactions to the "interactions" collection
+# def migrate_interactions():
+#     # Migrate books read by users
+#     users = list(user_collection.find())
+#     for user in users:
+#         user_id = user['pseudo']
+#         for book_id in user.get('already_read', []):
+#             interaction_collection.insert_one({
+#                 'user_id': user_id,
+#                 'book_id': book_id,
+#                 'interaction_type': 'read',
+#                 'timestamp': datetime.now(timezone.utc)
+#             })
+
+#     # Migrate user's wishlist
+#     for user in users:
+#         user_id = user['pseudo']
+#         for book_id in user.get('wishlist', []):
+#             interaction_collection.insert_one({
+#                 'user_id': user_id,
+#                 'book_id': book_id,
+#                 'interaction_type': 'wishlist',
+#                 'timestamp': datetime.now(timezone.utc)
+#             })
+
+#     # Migrate user reviews
+#     reviews = list(review_collection.find())
+#     for review in reviews:
+#         interaction_collection.insert_one({
+#             'user_id': review['user_pseudo'],
+#             'book_id': review['book_id'],
+#             'interaction_type': 'review',
+#             'timestamp': review.get('review_date', datetime.now(timezone.utc)),
+#             'review_text': review['review_text'],
+#             'rating': review.get('rating', None)
+#         })
+
+        
+    
+#     # Migrate user reviews
+#     reviews = list(review_collection.find())
+#     for review in reviews:
+#         interaction_collection.insert_one({
+#             'user_id': review['user_pseudo'],
+#             'book_id': review['book_id'],
+#             'interaction_type': 'review',
+#             'timestamp': review.get('review_date', datetime.now(timezone.utc)),  # Use review date or current time
+#             'review_text': review['review_text'],
+#             'rating': review.get('rating', None)
+#         })
+
+# # Run the migration
+# migrate_interactions()
+
+
+# def add_review_to_book(user_pseudo, book_id, review_text, rating): ##takes user_id, book_id, text and rating as input and adds it to the databsae 
+#     with get_mongo_client() as client:
+#         db = client['ibooks']
+#         reviews_collection = db['reviews']
+#         try:
+#             review = {
+#                 "user_id": user_pseudo,
+#                 "book_id": book_id,
+#                 "review_text": review_text,
+#                 "rating": rating,
+#                 "timestamp": datetime.datetime.now()
+#             }
+#             reviews_collection.insert_one(review)
+#             return True
+#         except Exception as e:
+#             print(f"An error occurred: {e}")
+#             return False
+
+
+# # Update the user model to include reading goals
+# def update_user_model():
+#     client = get_mongo_client()
+#     db = client['ibooks']
+#     users_collection = db['users']
+
+#     # Add a new field for reading goals to all users if it doesn't exist
+#     users_collection.update_many(
+#         {},
+#         {
+#             "$set": {
+#                 "reading_goals": {
+#                     "goal": 0,
+#                     "books_read": 0
+#                 }
+#             }
+#         }
+#     )
+#     print("user table modified !")
+    
+# def update_reading_goal(user_pseudo, new_goal):
+#     with get_mongo_client() as client:
+#         db = client['ibooks']
+#         users_collection = db['users']
+        
+#         # Fetch the user's current reading goal and book_read count
+#         user_data = users_collection.find_one({'pseudo': user_pseudo})
+#         if user_data:
+#             current_book_read = user_data.get('already_read', 0)
+            
+#             # Update the reading goal with the preserved book_read count
+#             users_collection.update_one(
+#                 {'pseudo': user_pseudo},
+#                 {'$set': {
+#                     'reading_goals.goal': new_goal,
+#                     'reading_goals.books_read': current_book_read
+#                 }}
+#             )
+
+
+
+
+# def initialize_wishlist_for_users():
+#     with get_mongo_client() as client :
+#         db = client['ibooks']
+#         users_collection = db['users']
+#         users = users_collection.find()
+#         for user in users:
+#             if 'wishlist' not in user:
+#                 users_collection.update_one({'_id': user['_id']}, {'$set': {'wishlist': []}})
+#         print("wishlist att. added succesfully")
+
+
+
+
 
 # def add_book_to_user_favs(user_pseudo, book_id):
 #     client = get_mongo_client()

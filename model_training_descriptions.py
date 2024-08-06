@@ -5,7 +5,7 @@ from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 
 # Load processed data
-data = np.load('data/processed_data.npz')
+data = np.load('data\datasets\cleaned_books_desc_sentiments.csv')
 X, y = data['X'], data['y']
 
 # Train-test split

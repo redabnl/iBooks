@@ -7,7 +7,7 @@ import requests
 from sklearn.linear_model import LogisticRegression
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from data.book_model import get_all_books, fetch_book_by_id
+from data.book_model import  fetch_book_by_id
 
 ## FETCHING BOOKS AND USER'S DATA FOR MACHINE LEARNING
 
@@ -42,8 +42,9 @@ def fetch_user_data(user_pseudo):
         for review_id in user_data.get('user_reviews', []):
             review = reviews_collection.find_one({'_id': review_id})
             reviews.append({'book_id': review['book_id'], 'rating': review['rating']})
+        wishlist = user_data.get('wishlist', [])
             
-    return read_books, reviews
+    return read_books, reviews, wishlist
 
 
 

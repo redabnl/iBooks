@@ -27,5 +27,5 @@ def login():
                     st.session_state['logged_in'] = False
                     st.error("Incorrect username or password")
                     
-if __name__ == "__main__":
-    login()
+# if __name__ == "__main__":
+#     login()

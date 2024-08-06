@@ -2,10 +2,11 @@ import streamlit as st
 
 from data.models import create_user
 from streamlit import session_state
+from frontE.login import login
 
 
 # def create_user(username, password):
-#     
+    
 #     return True
 
 
@@ -31,15 +32,20 @@ def register():
                     st.error("passwords do not match !")
                     return
                 
+                # create_user(pseudo, pwd)
                 if create_user(pseudo, pwd):
-                    st.success("account created succesfully")
-                    ## session state var 
-                    st.session_state['just_registered'] = True
-                    st.rerun()
-                    # st.experimental_rerun()
+                   st.success("User created !")
+                   
+                   login()
+                   st.rerun()
+                #     st.success("account created succesfully")
+                #     ## session state var 
+                #     st.session_state['just_registered'] = True
+                #     st.rerun()
+                #     # st.experimental_rerun()
                     
-                else: st.error("Registration can't be done")
+                # else: st.error("Registration can't be done")
                 
                 
-if __name__== "__main__":
-    register()
+# if __name__== "__main__":
+#     register()
