@@ -23,12 +23,12 @@ This application is a virtual library that integrates with the Open Library API.
 
 ## Features
 
-User Authentication: Register, log in, and log out.
-Book Search: Search for books using the Open Library API and view detailed information.
-Favorites Collection: Add books to a favorites collection.
-Read Books Management: Mark books as already read and view them in the library.
-Reviews: Leave and view reviews for books.
-Recommendations: Receive personalized book recommendations based on reading history and reviews.
+-User Authentication: Register, log in, and log out.
+-Book Search: Search for books using the Open Library API and view detailed information.
+-Wishlist Collection: Add books the user want to read later to the wishlist with a purchase like to where to find the cheapest to buy.
+-Read Books Management: Mark books as already read and view them in the library.
+-Reviews: Leave and view reviews for read books.
+-Recommendations: Receive personalized book recommendations based on reading history and reviews.
 
 ## Installation
 
@@ -37,6 +37,9 @@ Python 3.x
 MongoDB
 Flask  
 Open Library API Key
+Google books API Key
+NYT API KEY
+
 -- Installation Steps
 
 1. Clone the repository: `git clone https://github.com/redabnl/ibooks.git`
@@ -50,12 +53,12 @@ Open Library API Key
 -- Home Page
 Search for books using keywords.
 View book details including title, author, published year, cover image, average rating, and summary.
-Add books to your favorites collection.
+Add books to your wishlist .
 Mark books as already read.
-Leave reviews and ratings for books.
+Leave reviews and ratings for read books.
 
 -- Library
-View books added to your favorites collection.
+View books added to your wishlist collection and links to where the user can find them.
 View books marked as already read.
 Receive personalized book recommendations.
 
@@ -82,6 +85,7 @@ The database consists of three collections:
    already_read: Array of ObjectIds (Book references)
    read_books: Array of ObjectIds (Book references)
    user_reviews: Array of ObjectIds (Review references)
+   wishlist : Array of ObjectIds (book reference)
 
 2. **Books**: stores books searched by users to enrich the databse including isbn, cover url, ratings details ...
    \_id: ObjectId
@@ -90,6 +94,7 @@ The database consists of three collections:
    author: String
    published_year: String
    summary: String
+   categories : array
    cover_url: String
    ratings_average: Number
    ratings_count: Number
@@ -112,12 +117,12 @@ The database consists of three collections:
 - Session management ensures users stay logged in across sessions.
 - Users can log out.
 
-2. **Book Search and Add to Favorites**:
+2. **Book Search and Add to Wishlist**:
 
 - Users can search for books by title, author, or ISBN.
 - Users can view book details, including title, author, published year, summary, and cover URL
-- Users can add books to their favorites/read collection.
-- Users can view their favorites/read collection.
+- Users can add books to their wishlist/read collection.
+- Users can view their wishlist/read collection.
 
 3. **Mark as Already Read and Leave Reviews**:
 
