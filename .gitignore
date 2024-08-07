@@ -1,5 +1,3 @@
-# Ignore all files and folders except the highlighted ones
-
 # Ignore all files and folders by default
 *
 
@@ -14,13 +12,74 @@
 !model_training_avgRatings.py
 !model_training_descriptions.py
 !model_training_user_interc.py
+
+# Ignore everything in the data folder except updated_dataset
+data/**
 !data/updated_dataset/
+!data/updated_dataset/**
 !data/book_model.py
+!data/data_preparing.py
 !data/models.py
+
+# Ignore the frontE folder but include specific files and directories
+frontE/**
 !frontE/styles/
-!frontE/homePage.py
+!frontE/styles/**
+!frontE/explorer.py
+!frontE/HomePage.py
 !frontE/library.py
 !frontE/login.py
 !frontE/register.py
+
+# Ignore the recommendations_serv folder but include specific files and directories
+recommendations_serv/**
 !recommendations_serv/app/
-!recommendations_serv/requirements.txt
+!recommendations_serv/app/**
+!recommendations_serv/app/data_preparation.py
+!recommendations_serv/app/real_time_updates.py
+!recommendations_serv/app/fictional_dataPrep.py
+
+
+# # Ignore cache directories and other unnecessary files
+# __pycache__/
+# cahier_charge/
+# pkl_models/
+
+# # Ignore everything in the data folder except updated_dataset
+# data/**
+# !data/updated_dataset/
+# !data/updated_dataset/**
+# !data/book_model.py
+# !data/data_preparing.py
+# !data/models.py
+
+# # Ignore the frontE folder
+# frontE/**
+
+# # Except for these files in the frontE folder
+# !frontE/styles/**
+# !frontE/explorer.py
+# !frontE/HomePage.py
+# !frontE/library.py
+# !frontE/login.py
+# !frontE/register.py
+
+# # Ignore the recommendations_serv folder
+# recommendations_serv/**
+
+# # Except for these files in the recommendations_serv folder
+# !recommendations_serv/app/__pycache__/
+# !recommendations_serv/app/data_preparation.py
+# !recommendations_serv/app/real_time_updates.py
+# !recommendations_serv/app/fictional_dataPrep.py
+
+# # Ignore all these finally
+# venv/
+# .env
+# 0
+# 4.0
+# app.py
+# scikit-surprise-1.1.4.tar.gz
+# tensorflow-2.16.2-cp312-cp312-win_amd64.whl
+# tests.py
+# trashcode.py
