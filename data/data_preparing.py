@@ -7,7 +7,9 @@ import torch
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from tqdm import tqdm
 
-
+#####################################
+## NOT FUNCTIONAL BECCAUSE OF LACK OF MEMORY LOL
+#####################################
 
 
 # Load the prepared dataset with a specified encoding and error handling
@@ -32,7 +34,6 @@ tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 model = BertModel.from_pretrained('bert-base-uncased')
 
 print("tokenizer and BERT initialized...")
-print("gpu or cpu ?")
 # Move model to GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model.to(device)

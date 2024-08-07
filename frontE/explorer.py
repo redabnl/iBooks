@@ -111,7 +111,8 @@ def show_trending_books_as_cards(books):
 # from sklearn.metrics.pairwise import cosine_similarity
 # import random
 
-# # Load the trained model and preprocessed data
+# # Load the trained model we have and preprocess data
+## for tests purposes
 # model = joblib.load('model/book_recommendation_model.pkl')
 # data = np.load('data/preprocessed_data.npz')
 # X = data['X']
@@ -169,32 +170,3 @@ def show_trending_books_as_cards(books):
 
 
 
-
-    # Close the HTML block
-    # Example of a card layout for book details
-    # st.markdown(
-    #     """
-    #     <div class="card">
-    #         <div class="card-title">Empires Ascendant: Time Frame 400 Bc-Ad 200</div>
-    #         <div class="card-author">By Time-Life Books</div>
-    #         <div class="card-description">examines the different cultures that were emerging between 400 bc and 200...</div>
-    #     </div>
-    #     <div class="card">
-    #         <div class="card-title">The Holy Land (Lost Civilizations)</div>
-    #         <div class="card-author">By Time-Life Books</div>
-    #         <div class="card-description">looks at the history geography and ancient cultures of the holy land...</div>
-    #     </div>
-    #     """, unsafe_allow_html=True
-    # )
-
-              
-
-# def main():
-#     # Check login state
-#     if st.session_state.get('logged_in', False):
-#         show_explorer_page()  
-#     else:
-#         st.write("Please log in.")  # Or redirect them to the login page
-
-# if __name__ == "__main__":
-#     main()

@@ -11,6 +11,11 @@ import torch
 from sklearn.metrics.pairwise import cosine_similarity
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
+
+########################################
+## MEMORY PROBLEMS BECAUSE OF THE BERT ???
+########################################
+
 # Load the prepared dataset
 prepared_data = pd.read_csv('data/datasets/cleaned_books_rev.csv')
 
@@ -46,7 +51,7 @@ print(f"BERT text embedding done. \n Train and split Now ...")
 # Train-test split
 X_train, X_test, y_train, y_test = train_test_split(bert_embeddings, prepared_data['binary_rating'], test_size=0.2, random_state=42)
 
-# Function to evaluate models
+# ecaluating the models predictions acc and everything
 def evaluate_model(model, X_test, y_test):
     y_pred = model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
@@ -56,7 +61,7 @@ def evaluate_model(model, X_test, y_test):
     roc_auc = roc_auc_score(y_test, y_pred)
     return accuracy, precision, recall, f1, roc_auc
 
-# Store results
+# Store results for laters
 results = {}
 
 # Logistic Regression
@@ -74,15 +79,12 @@ results['Logistic Regression'] = {
 
 
 
-# Display results
 for model_name, result in results.items():
     print(f"{model_name}: {result}")
 
-# Save the results
 results_df = pd.DataFrame(results).T
 results_df.to_csv('data/datasets/FINAL_model_comparison_results.csv')
 
-# Save the best model (Logistic Regression in this case)
 joblib.dump(best_lr, 'best_model.pkl')
 joblib.dump(tokenizer, 'tokenizer.pkl')
 

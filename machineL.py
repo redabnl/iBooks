@@ -209,19 +209,13 @@ print(most_reviewed_books[['title', 'authors', 'ratings_count', 'categories']])
 
 
 
-# import numpy as np
-# from sklearn.linear_model import LogisticRegression
-# from sklearn.model_selection import train_test_split, GridSearchCV
-# import joblib
-# import pandas as pd
-
 # # Load data
 # data = np.load('data/preprocessed_data.npz')
 # X = data['X']
 # df = pd.read_csv('data/cleaned_books_desc_sentiments.csv')
 # y = df['Category']  # Assuming 'Category' is the target column
 
-# # Split data
+# # Split data to train and test subs
 # X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 # # Initialize and train model

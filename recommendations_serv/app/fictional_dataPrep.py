@@ -11,34 +11,6 @@ client = MongoClient(os.getenv('MONGO_DB_URI'))
 db = client['fictional_ibooks']
 book_collection = db['books']
 
-# # Define categories
-# SUBJECTS = [
-#     "art", "biographies", "children", "computers", "education", 
-#     "fiction", "history", "mathematics", "medicine", "philosophy", 
-#     "religion", "science", "technology"
-# ]
-
-# # Fetch all books
-# books = list(book_collection.find())
-
-# # Update categories randomly
-# for book in books:
-#     new_category = random.choice(SUBJECTS)
-#     book_collection.update_one(
-#         {"_id": book["_id"]},
-#         {"$set": {"category": new_category}}
-#     )
-
-# print("Book categories updated successfully!")
-
-# Drop the 'categories' array from all documents in the 'books' collection
-result = book_collection.update_many(
-    {},
-    {"$unset": {"categories": ""}}
-)
-
-print(f"Modified {result.modified_count} documents to remove 'categories' array.")
-
 
 # from faker import Faker
 # from pymongo import MongoClient, InsertOne

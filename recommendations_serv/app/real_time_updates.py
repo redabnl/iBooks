@@ -14,23 +14,23 @@ load_dotenv()
 
 # Connect to MongoDB for real-time data
 client = MongoClient(os.getenv('MONGO_DB_URI'))
-real_db = client['ibooks']  # Real application database
+real_db = client['ibooks']  # Real  database
 user_collection = real_db['users']
 book_collection = real_db['books']
 interaction_collection = real_db['interactions']
 
-# Fetch users and books from real application database
+# Fetch users and books from real  database
 users = list(user_collection.find())
 books = list(book_collection.find())
 
-# Create mappings from user and item IDs to indices
+# mappings from user and item IDs to indices
 user_ids = np.array([user['pseudo'] for user in users])
 item_ids = np.array([book['_id'] for book in books])
 
-# Initialize an empty interaction matrix
+# Initialise an empty interaction matrix
 interaction_matrix = coo_matrix(([], ([], [])), shape=(len(user_ids), len(item_ids)))
 
-# Function to update interaction matrix with new user interactions
+# Func to update interaction matrix with new user interactions
 def update_interaction_matrix(new_interactions, interaction_matrix, user_ids, item_ids):
     rows, cols, data = interaction_matrix.row.tolist(), interaction_matrix.col.tolist(), interaction_matrix.data.tolist()
     for interaction in new_interactions:
@@ -81,7 +81,7 @@ def periodic_model_update():
         model.fit(interaction_matrix.tocsr())
         print("Model updated with new interactions")
 
-# Schedule periodic updates (e.g., using a cron job or background scheduler)
+# Schedule periodic updates for the model (daily)
 schedule.every().day.at("00:00").do(periodic_model_update)
 
 while True:
