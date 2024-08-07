@@ -14,7 +14,7 @@
 !model_training_user_interc.py
 
 # Ignore everything in the data folder except specified files
-# data/
+data/
 !data/updated_dataset/
 !data/updated_dataset/**
 !data/book_model.py
@@ -22,7 +22,7 @@
 !data/models.py
 
 # Ignore the frontE folder but include specific files and directories
-# frontE/
+frontE/
 !frontE/styles/
 !frontE/styles/**
 !frontE/explorer.py
@@ -32,7 +32,7 @@
 !frontE/register.py
 
 # Ignore the recommendations_serv folder but include specific files and directories
-# recommendations_serv/
+recommendations_serv/
 !recommendations_serv/app/
 !recommendations_serv/app/**
 !recommendations_serv/app/data_preparation.py
